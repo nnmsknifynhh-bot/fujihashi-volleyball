@@ -515,178 +515,186 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            final teamColor = _teamFilter == TeamFilter.a
+                ? AppTheme.primaryRed
+                : Colors.blue;
+            // 画面の最大85%まで使い、内部でスクロール可能にする
+            final maxHeight = MediaQuery.of(ctx).size.height * 0.85;
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ヘッダー
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.people,
-                        color: _teamFilter == TeamFilter.a ? AppTheme.primaryRed : Colors.blue,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${_teamFilter == TeamFilter.a ? 'A' : 'B'}チーム 出場選手を選択',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      // 全選択/全解除ボタン
-                      TextButton(
-                        onPressed: () {
-                          setSheetState(() {
-                            if (current.length == teamPlayers.length) {
-                              current = {};
-                            } else {
-                              current = teamPlayers.map((p) => p.id).toSet();
-                            }
-                          });
-                        },
-                        child: Text(
-                          current.length == teamPlayers.length ? '全解除' : '全選択',
-                          style: TextStyle(
-                            color: _teamFilter == TeamFilter.a
-                                ? AppTheme.primaryRed
-                                : Colors.blue,
-                            fontSize: 13,
+                  // ヘッダー（固定）
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.people, color: teamColor, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_teamFilter == TeamFilter.a ? 'A' : 'B'}チーム 出場選手を選択',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '選択した選手だけがランキングに表示されます',
-                    style: const TextStyle(color: AppTheme.grey, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                  // 選手一覧
-                  ...teamPlayers.map((p) {
-                    final isSelected = current.contains(p.id);
-                    final teamColor = _teamFilter == TeamFilter.a
-                        ? AppTheme.primaryRed
-                        : Colors.blue;
-                    return GestureDetector(
-                      onTap: () {
-                        setSheetState(() {
-                          if (isSelected) {
-                            current = Set.from(current)..remove(p.id);
-                          } else {
-                            current = Set.from(current)..add(p.id);
-                          }
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? teamColor.withValues(alpha: 0.12)
-                              : AppTheme.cardBg2,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: isSelected
-                                ? teamColor.withValues(alpha: 0.6)
-                                : const Color(0xFF444444),
+                        const Spacer(),
+                        // 全選択/全解除ボタン
+                        TextButton(
+                          onPressed: () {
+                            setSheetState(() {
+                              if (current.length == teamPlayers.length) {
+                                current = {};
+                              } else {
+                                current = teamPlayers.map((p) => p.id).toSet();
+                              }
+                            });
+                          },
+                          child: Text(
+                            current.length == teamPlayers.length ? '全解除' : '全選択',
+                            style: TextStyle(color: teamColor, fontSize: 13),
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            // 背番号
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: Text(
+                      '選択した選手だけがランキングに表示されます',
+                      style: const TextStyle(color: AppTheme.grey, fontSize: 12),
+                    ),
+                  ),
+                  // 選手一覧（スクロール可能）
+                  Flexible(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      shrinkWrap: true,
+                      itemCount: teamPlayers.length,
+                      itemBuilder: (_, i) {
+                        final p = teamPlayers[i];
+                        final isSelected = current.contains(p.id);
+                        return GestureDetector(
+                          onTap: () {
+                            setSheetState(() {
+                              if (isSelected) {
+                                current = Set.from(current)..remove(p.id);
+                              } else {
+                                current = Set.from(current)..add(p.id);
+                              }
+                            });
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? teamColor.withValues(alpha: 0.12)
+                                  : AppTheme.cardBg2,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
                                 color: isSelected
-                                    ? teamColor.withValues(alpha: 0.25)
-                                    : const Color(0xFF2A2A2A),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isSelected
-                                      ? teamColor
-                                      : const Color(0xFF555555),
-                                ),
+                                    ? teamColor.withValues(alpha: 0.6)
+                                    : const Color(0xFF444444),
                               ),
-                              child: Center(
-                                child: Text(
-                                  p.number.isNotEmpty ? p.number : '?',
-                                  style: TextStyle(
-                                    color: isSelected ? teamColor : AppTheme.grey,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                // 背番号
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? teamColor.withValues(alpha: 0.25)
+                                        : const Color(0xFF2A2A2A),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? teamColor
+                                          : const Color(0xFF555555),
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      p.number.isNotEmpty ? p.number : '?',
+                                      style: TextStyle(
+                                        color: isSelected ? teamColor : AppTheme.grey,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // 名前
-                            Expanded(
-                              child: Text(
-                                p.name,
-                                style: TextStyle(
-                                  color: isSelected ? Colors.white : AppTheme.lightGrey,
-                                  fontSize: 14,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
+                                const SizedBox(width: 12),
+                                // 名前
+                                Expanded(
+                                  child: Text(
+                                    p.name,
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppTheme.lightGrey,
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                // チェックアイコン
+                                Icon(
+                                  isSelected
+                                      ? Icons.check_circle
+                                      : Icons.radio_button_unchecked,
+                                  color: isSelected ? teamColor : AppTheme.grey,
+                                  size: 22,
+                                ),
+                              ],
                             ),
-                            // チェックアイコン
-                            Icon(
-                              isSelected
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              color: isSelected ? teamColor : AppTheme.grey,
-                              size: 22,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 16),
-                  // 適用ボタン
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _teamFilter == TeamFilter.a
-                            ? AppTheme.primaryRed
-                            : Colors.blue,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          // 全員選択の場合はnull（デフォルト）に戻す
-                          if (current.length == teamPlayers.length) {
-                            _selectedPlayerIds = null;
-                          } else {
-                            _selectedPlayerIds = current;
-                          }
-                        });
-                        Navigator.pop(ctx);
+                          ),
+                        );
                       },
-                      child: Text(
-                        current.isEmpty
-                            ? '選手を選択してください'
-                            : '${current.length}名でランキングを表示',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                    ),
+                  ),
+                  // 適用ボタン（固定）
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                        16, 8, 16, MediaQuery.of(ctx).padding.bottom + 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: teamColor,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            // 全員選択の場合はnull（デフォルト）に戻す
+                            if (current.length == teamPlayers.length) {
+                              _selectedPlayerIds = null;
+                            } else {
+                              _selectedPlayerIds = current;
+                            }
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        child: Text(
+                          current.isEmpty
+                              ? '選手を選択してください'
+                              : '${current.length}名でランキングを表示',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                     ),
