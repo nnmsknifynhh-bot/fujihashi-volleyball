@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -278,11 +277,16 @@ class _PrintScreenState extends State<PrintScreen> {
     final now = DateTime.now();
     final dateStr = DateFormat('yyyy年M月d日').format(now);
 
-    // 日本語フォント（Noto Sans JP）を読み込む
-    final regularFontData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
-    final boldFontData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
-    final regularFont = pw.Font.ttf(regularFontData);
-    final boldFont = pw.Font.ttf(boldFontData);
+    // 日本語フォント（PdfGoogleFonts経由でNoto Sans JPを取得）
+    // オンラインキャッシュ方式のため9MBのローカルファイルより安定
+    final pw.Font regularFont;
+    final pw.Font boldFont;
+    try {
+      regularFont = await PdfGoogleFonts.notoSansJPRegular();
+      boldFont = await PdfGoogleFonts.notoSansJPBold();
+    } catch (e) {
+      throw Exception('日本語フォントの読み込みに失敗しました。\nインターネット接続を確認してください。\n詳細: $e');
+    }
     final theme = pw.ThemeData.withFont(
       base: regularFont,
       bold: boldFont,
