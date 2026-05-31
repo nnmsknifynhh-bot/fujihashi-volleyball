@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -277,8 +278,17 @@ class _PrintScreenState extends State<PrintScreen> {
     final now = DateTime.now();
     final dateStr = DateFormat('yyyy年M月d日').format(now);
 
-    // フォント（デフォルト使用）
-    final theme = pw.ThemeData.withFont();
+    // 日本語フォント（Noto Sans JP）を読み込む
+    final regularFontData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
+    final boldFontData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+    final regularFont = pw.Font.ttf(regularFontData);
+    final boldFont = pw.Font.ttf(boldFontData);
+    final theme = pw.ThemeData.withFont(
+      base: regularFont,
+      bold: boldFont,
+      italic: regularFont,
+      boldItalic: boldFont,
+    );
 
     pdf.addPage(
       pw.MultiPage(
