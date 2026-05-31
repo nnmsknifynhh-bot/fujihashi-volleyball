@@ -124,13 +124,22 @@ class _SettingsScreenState extends State<SettingsScreen>
         final players =
             team == 'A' ? provider.teamAPlayers : provider.teamBPlayers;
 
+        // A/B どちらにも属さない「未割り当て」選手（Aタブにのみ表示）
+        final knownIds = {
+          ...provider.teamAPlayers.map((p) => p.id),
+          ...provider.teamBPlayers.map((p) => p.id),
+        };
+        final unassigned = team == 'A'
+            ? provider.players.where((p) => !knownIds.contains(p.id)).toList()
+            : <Player>[];
+
         if (provider.isLoading) {
           return const Center(
             child: CircularProgressIndicator(color: AppTheme.primaryRed),
           );
         }
 
-        if (players.isEmpty) {
+        if (players.isEmpty && unassigned.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -148,24 +157,175 @@ class _SettingsScreenState extends State<SettingsScreen>
           );
         }
 
-        return ReorderableListView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
-          itemCount: players.length,
-          onReorder: (oldIndex, newIndex) async {
-            if (newIndex > oldIndex) newIndex--;
-            final reordered = List<Player>.from(players);
-            final item = reordered.removeAt(oldIndex);
-            reordered.insert(newIndex, item);
-            for (int i = 0; i < reordered.length; i++) {
-              reordered[i].sortOrder = i;
-              await provider.updatePlayer(reordered[i]);
-            }
-          },
-          itemBuilder: (context, index) {
-            final player = players[index];
-            return _buildPlayerCard(context, player, provider,
-                key: ValueKey(player.id));
-          },
+        return CustomScrollView(
+          slivers: [
+            // 通常の選手リスト（並び替え可能）
+            SliverReorderableList(
+              itemCount: players.length,
+              onReorder: (oldIndex, newIndex) async {
+                if (newIndex > oldIndex) newIndex--;
+                final reordered = List<Player>.from(players);
+                final item = reordered.removeAt(oldIndex);
+                reordered.insert(newIndex, item);
+                for (int i = 0; i < reordered.length; i++) {
+                  reordered[i].sortOrder = i;
+                  await provider.updatePlayer(reordered[i]);
+                }
+              },
+              itemBuilder: (context, index) {
+                final player = players[index];
+                return ReorderableDragStartListener(
+                  key: ValueKey(player.id),
+                  index: index,
+                  child: _buildPlayerCard(context, player, provider,
+                      key: ValueKey('card_${player.id}')),
+                );
+              },
+            ),
+            // 未割り当て選手セクション（Aタブのみ）
+            if (unassigned.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber,
+                          color: Colors.orange, size: 16),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'チーム未設定の選手（タップしてチームを割り当て）',
+                          style: TextStyle(color: Colors.orange, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final player = unassigned[index];
+                    return Container(
+                      key: ValueKey('unassigned_${player.id}'),
+                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.cardBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                      ),
+                      child: ListTile(
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.orange),
+                          ),
+                          child: Center(
+                            child: Text(
+                              player.number.isNotEmpty ? '#${player.number}' : '?',
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          player.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          'チーム未設定 (保存値: "${player.team}")',
+                          style: const TextStyle(
+                              color: Colors.orange, fontSize: 11),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Aチームに移動
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryRed,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () async {
+                                player.team = 'A';
+                                await provider.updatePlayer(player);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          '${player.name} をAチームに移動しました'),
+                                      backgroundColor: AppTheme.primaryRed,
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Text('Aへ',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 6),
+                            // Bチームに移動
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () async {
+                                player.team = 'B';
+                                await provider.updatePlayer(player);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                          '${player.name} をBチームに移動しました'),
+                                      backgroundColor: Colors.blue,
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Text('Bへ',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: unassigned.length,
+                ),
+              ),
+            ],
+            // 下部余白
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
         );
       },
     );
