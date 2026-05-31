@@ -33,16 +33,20 @@ class AppProvider extends ChangeNotifier {
   String? get currentMatchId => _currentMatchId;
   bool get isLoading => _isLoading;
 
+  // チーム名を正規化（大文字・半角・トリム）して比較
+  static String _normalizeTeam(String t) => t.trim().toUpperCase()
+      .replaceAll('Ａ', 'A').replaceAll('Ｂ', 'B'); // 全角対応
+
   List<Player> get teamAPlayers =>
-      _players.where((p) => p.team == 'A').toList()
+      _players.where((p) => _normalizeTeam(p.team) == 'A').toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   List<Player> get teamBPlayers =>
-      _players.where((p) => p.team == 'B').toList()
+      _players.where((p) => _normalizeTeam(p.team) == 'B').toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   List<Player> get currentTeamPlayers =>
-      _players.where((p) => p.team == _currentTeam).toList()
+      _players.where((p) => _normalizeTeam(p.team) == _normalizeTeam(_currentTeam)).toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   Match? get currentMatch =>
@@ -66,7 +70,12 @@ class AppProvider extends ChangeNotifier {
         _players = snap.docs
             .where((d) => d.id != '_placeholder')
             .map((d) {
-              try { return Player.fromJson(d.data()); }
+              try {
+                final p = Player.fromJson(d.data());
+                // Firestoreのチーム値を正規化（'a'→'A'、全角・スペース除去）
+                p.team = _normalizeTeam(p.team);
+                return p;
+              }
               catch (_) { return null; }
             })
             .whereType<Player>()
@@ -275,7 +284,7 @@ class AppProvider extends ChangeNotifier {
       id: _uuid.v4(),
       name: name,
       number: number,
-      team: team,
+      team: _normalizeTeam(team), // 正規化して保存
       sortOrder: maxOrder,
     );
     await _db.collection('players').doc(player.id).set(player.toJson());
@@ -283,6 +292,7 @@ class AppProvider extends ChangeNotifier {
 
   // ── 選手を更新 ──
   Future<void> updatePlayer(Player player) async {
+    player.team = _normalizeTeam(player.team); // 正規化して保存
     await _db.collection('players').doc(player.id).set(player.toJson());
   }
 
