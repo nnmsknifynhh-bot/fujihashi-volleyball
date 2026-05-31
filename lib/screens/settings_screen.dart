@@ -77,6 +77,30 @@ class _SettingsScreenState extends State<SettingsScreen>
                 color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const Spacer(),
+          // 全選手確認ボタン（デバッグ用）
+          Consumer<AppProvider>(
+            builder: (context, provider, _) => GestureDetector(
+              onTap: () => _showAllPlayersDebug(context, provider),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.manage_search, color: Colors.orange, size: 13),
+                    SizedBox(width: 4),
+                    Text('全選手確認',
+                        style: TextStyle(color: Colors.orange, fontSize: 11)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // リアルタイム同期インジケーター
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -603,6 +627,129 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // 全選手の生データを表示（デバッグ用）
+  void _showAllPlayersDebug(BuildContext context, AppProvider provider) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppTheme.cardBg,
+        title: Row(
+          children: [
+            const Icon(Icons.manage_search, color: Colors.orange, size: 20),
+            const SizedBox(width: 8),
+            Text('全選手一覧（${provider.players.length}名）',
+                style: const TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: ListView(
+            children: provider.players.map((p) {
+              final teamNorm = AppProvider.normalizeTeamPublic(p.team);
+              final isOk = teamNorm == 'A' || teamNorm == 'B';
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isOk ? AppTheme.cardBg2 : Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isOk ? const Color(0xFF444444) : Colors.orange,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(p.name,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
+                          Text(
+                            'team="${p.team}"  正規化後="$teamNorm"',
+                            style: TextStyle(
+                              color: isOk ? AppTheme.grey : Colors.orange,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!isOk) ...[
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryRed,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () async {
+                          p.team = 'A';
+                          await provider.updatePlayer(p);
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                        child: const Text('Aへ',
+                            style: TextStyle(color: Colors.white, fontSize: 11)),
+                      ),
+                      const SizedBox(width: 4),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () async {
+                          p.team = 'B';
+                          await provider.updatePlayer(p);
+                          if (context.mounted) Navigator.pop(context);
+                        },
+                        child: const Text('Bへ',
+                            style: TextStyle(color: Colors.white, fontSize: 11)),
+                      ),
+                    ] else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: p.team == 'A'
+                              ? AppTheme.primaryRed.withValues(alpha: 0.2)
+                              : Colors.blue.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${p.team}チーム',
+                          style: TextStyle(
+                            color: p.team == 'A'
+                                ? AppTheme.primaryRed
+                                : Colors.blue,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('閉じる', style: TextStyle(color: AppTheme.grey)),
+          ),
+        ],
       ),
     );
   }

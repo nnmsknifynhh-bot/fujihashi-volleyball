@@ -37,6 +37,9 @@ class AppProvider extends ChangeNotifier {
   static String _normalizeTeam(String t) => t.trim().toUpperCase()
       .replaceAll('Ａ', 'A').replaceAll('Ｂ', 'B'); // 全角対応
 
+  // 外部からも参照できる公開版（デバッグ表示用）
+  static String normalizeTeamPublic(String t) => _normalizeTeam(t);
+
   List<Player> get teamAPlayers =>
       _players.where((p) => _normalizeTeam(p.team) == 'A').toList()
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
