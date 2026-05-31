@@ -125,20 +125,54 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildTabBar() {
-    return Container(
-      color: AppTheme.cardBg,
-      child: TabBar(
-        controller: _tabController,
-        tabs: const [
-          Tab(text: 'Aチーム'),
-          Tab(text: 'Bチーム'),
-        ],
-        labelColor: AppTheme.gold,
-        unselectedLabelColor: AppTheme.grey,
-        indicatorColor: AppTheme.primaryRed,
-        indicatorWeight: 3,
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-      ),
+    return Consumer<AppProvider>(
+      builder: (context, provider, _) {
+        final aCount = provider.teamAPlayers.length;
+        final bCount = provider.teamBPlayers.length;
+        final allCount = provider.players.length;
+        final unassignedCount = allCount - aCount - bCount;
+        return Container(
+          color: AppTheme.cardBg,
+          child: Column(
+            children: [
+              TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: 'Aチーム ($aCount名)'),
+                  Tab(text: 'Bチーム ($bCount名)'),
+                ],
+                labelColor: AppTheme.gold,
+                unselectedLabelColor: AppTheme.grey,
+                indicatorColor: AppTheme.primaryRed,
+                indicatorWeight: 3,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              // 取得総数・未割り当て数を表示
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                color: AppTheme.cardBg2,
+                child: Row(
+                  children: [
+                    Icon(Icons.people, color: AppTheme.grey, size: 13),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Firestore取得: 計$allCount名  '
+                      '(A:$aCount  B:$bCount'
+                      '${unassignedCount > 0 ? "  未設定:$unassignedCount" : ""})',
+                      style: TextStyle(
+                        color: unassignedCount > 0
+                            ? Colors.orange
+                            : AppTheme.grey,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
