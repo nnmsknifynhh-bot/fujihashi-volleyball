@@ -11,6 +11,9 @@ import 'print_screen.dart';
 enum PeriodFilter { today, week, month, custom, all }
 enum TeamFilter { all, a, b }
 
+// 選手選択モード（チームフィルターがA or Bのとき有効）
+// 空セット = 全員選択とみなす
+
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
@@ -25,6 +28,10 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   DateTimeRange? _customRange;
   // ignore: unused_field
   int _statsTabIndex = 0; // 0=サーブ, 1=レシーブ
+
+  // 選手個別選択（チームフィルター使用時）
+  // nullの場合は全員対象、非nullの場合は選択中のIDセット
+  Set<String>? _selectedPlayerIds;
 
   @override
   void initState() {
@@ -204,15 +211,68 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             ),
           ),
           const SizedBox(height: 8),
-          // チームフィルター
-          Row(
-            children: [
-              _teamChip('全体', TeamFilter.all),
-              const SizedBox(width: 6),
-              _teamChip('Aチーム', TeamFilter.a),
-              const SizedBox(width: 6),
-              _teamChip('Bチーム', TeamFilter.b),
-            ],
+          // チームフィルター＋選手選択
+          Consumer<AppProvider>(
+            builder: (context, provider, _) {
+              return Row(
+                children: [
+                  _teamChip('全体', TeamFilter.all),
+                  const SizedBox(width: 6),
+                  _teamChip('Aチーム', TeamFilter.a),
+                  const SizedBox(width: 6),
+                  _teamChip('Bチーム', TeamFilter.b),
+                  // チームが選択されているとき「選手を選ぶ」ボタンを表示
+                  if (_teamFilter != TeamFilter.all) ...([
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => _showPlayerSelectSheet(provider),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: _selectedPlayerIds != null
+                              ? AppTheme.gold.withValues(alpha: 0.15)
+                              : AppTheme.cardBg2,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _selectedPlayerIds != null
+                                ? AppTheme.gold
+                                : const Color(0xFF444444),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_search,
+                              size: 13,
+                              color: _selectedPlayerIds != null
+                                  ? AppTheme.gold
+                                  : AppTheme.grey,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _selectedPlayerIds != null
+                                  ? '${_selectedPlayerIds!.length}名選択中'
+                                  : '選手を選ぶ',
+                              style: TextStyle(
+                                color: _selectedPlayerIds != null
+                                    ? AppTheme.gold
+                                    : AppTheme.grey,
+                                fontSize: 12,
+                                fontWeight: _selectedPlayerIds != null
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ]),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -303,7 +363,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             ? Colors.blue
             : AppTheme.gold;
     return GestureDetector(
-      onTap: () => setState(() => _teamFilter = filter),
+      onTap: () => _onTeamFilterChanged(filter),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -412,11 +472,232 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   }
 
   List<Player> _getFilteredPlayers(AppProvider provider) {
+    List<Player> base;
     switch (_teamFilter) {
-      case TeamFilter.a: return provider.teamAPlayers;
-      case TeamFilter.b: return provider.teamBPlayers;
-      case TeamFilter.all: return provider.players;
+      case TeamFilter.a:
+        base = provider.teamAPlayers;
+      case TeamFilter.b:
+        base = provider.teamBPlayers;
+      case TeamFilter.all:
+        return provider.players; // 全体のときは選手選択なし
     }
+    // 選手が個別選択されている場合はフィルター
+    if (_selectedPlayerIds != null && _selectedPlayerIds!.isNotEmpty) {
+      return base.where((p) => _selectedPlayerIds!.contains(p.id)).toList();
+    }
+    return base;
+  }
+
+  // チームフィルター変更時に選手選択をリセット
+  void _onTeamFilterChanged(TeamFilter filter) {
+    setState(() {
+      _teamFilter = filter;
+      _selectedPlayerIds = null; // リセット
+    });
+  }
+
+  // 選手選択ボトムシートを表示
+  void _showPlayerSelectSheet(AppProvider provider) {
+    final List<Player> teamPlayers = _teamFilter == TeamFilter.a
+        ? provider.teamAPlayers
+        : provider.teamBPlayers;
+
+    // 現在の選択状態（nullなら全員選択済みとみなす）
+    Set<String> current = _selectedPlayerIds ?? teamPlayers.map((p) => p.id).toSet();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ヘッダー
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.people,
+                        color: _teamFilter == TeamFilter.a ? AppTheme.primaryRed : Colors.blue,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_teamFilter == TeamFilter.a ? 'A' : 'B'}チーム 出場選手を選択',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      // 全選択/全解除ボタン
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            if (current.length == teamPlayers.length) {
+                              current = {};
+                            } else {
+                              current = teamPlayers.map((p) => p.id).toSet();
+                            }
+                          });
+                        },
+                        child: Text(
+                          current.length == teamPlayers.length ? '全解除' : '全選択',
+                          style: TextStyle(
+                            color: _teamFilter == TeamFilter.a
+                                ? AppTheme.primaryRed
+                                : Colors.blue,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '選択した選手だけがランキングに表示されます',
+                    style: const TextStyle(color: AppTheme.grey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  // 選手一覧
+                  ...teamPlayers.map((p) {
+                    final isSelected = current.contains(p.id);
+                    final teamColor = _teamFilter == TeamFilter.a
+                        ? AppTheme.primaryRed
+                        : Colors.blue;
+                    return GestureDetector(
+                      onTap: () {
+                        setSheetState(() {
+                          if (isSelected) {
+                            current = Set.from(current)..remove(p.id);
+                          } else {
+                            current = Set.from(current)..add(p.id);
+                          }
+                        });
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? teamColor.withValues(alpha: 0.12)
+                              : AppTheme.cardBg2,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? teamColor.withValues(alpha: 0.6)
+                                : const Color(0xFF444444),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // 背番号
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? teamColor.withValues(alpha: 0.25)
+                                    : const Color(0xFF2A2A2A),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? teamColor
+                                      : const Color(0xFF555555),
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  p.number.isNotEmpty ? p.number : '?',
+                                  style: TextStyle(
+                                    color: isSelected ? teamColor : AppTheme.grey,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // 名前
+                            Expanded(
+                              child: Text(
+                                p.name,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : AppTheme.lightGrey,
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                            // チェックアイコン
+                            Icon(
+                              isSelected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: isSelected ? teamColor : AppTheme.grey,
+                              size: 22,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                  // 適用ボタン
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _teamFilter == TeamFilter.a
+                            ? AppTheme.primaryRed
+                            : Colors.blue,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          // 全員選択の場合はnull（デフォルト）に戻す
+                          if (current.length == teamPlayers.length) {
+                            _selectedPlayerIds = null;
+                          } else {
+                            _selectedPlayerIds = current;
+                          }
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      child: Text(
+                        current.isEmpty
+                            ? '選手を選択してください'
+                            : '${current.length}名でランキングを表示',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildServeRankings(List<_PlayerServeStats> stats) {
