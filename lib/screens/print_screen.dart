@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
+import '../models/player.dart';
 import '../models/serve_record.dart';
 import '../utils/app_theme.dart';
 
@@ -26,7 +27,220 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclPeriodSummary = true;
   bool _inclTeamComparison = false;
 
+  // 選手フィルター（'ALL' / 'A' / 'B'）
+  String _teamFilter = 'ALL';
+  // null=全員, 非null=選択中IDセット
+  Set<String>? _selectedPlayerIds;
+
   bool _isGenerating = false;
+
+  void _onTeamChanged(String team) {
+    setState(() {
+      _teamFilter = team;
+      _selectedPlayerIds = null;
+    });
+  }
+
+  List<Player> _getFilteredPlayers(AppProvider provider) {
+    List<Player> base;
+    switch (_teamFilter) {
+      case 'A':
+        base = provider.teamAPlayers;
+      case 'B':
+        base = provider.teamBPlayers;
+      default:
+        base = provider.players;
+    }
+    if (_selectedPlayerIds != null && _selectedPlayerIds!.isNotEmpty) {
+      return base.where((p) => _selectedPlayerIds!.contains(p.id)).toList();
+    }
+    return base;
+  }
+
+  void _showPlayerSelectSheet(BuildContext ctx, AppProvider provider) {
+    final List<Player> teamPlayers = _teamFilter == 'A'
+        ? provider.teamAPlayers
+        : _teamFilter == 'B'
+            ? provider.teamBPlayers
+            : provider.players;
+    Set<String> current =
+        _selectedPlayerIds ?? teamPlayers.map((p) => p.id).toSet();
+    final teamColor = _teamFilter == 'A'
+        ? AppTheme.primaryRed
+        : _teamFilter == 'B'
+            ? Colors.blue
+            : AppTheme.gold;
+
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: AppTheme.cardBg,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      isScrollControlled: true,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSt) {
+          final maxH = MediaQuery.of(sheetCtx).size.height * 0.85;
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxH),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.people, color: teamColor, size: 18),
+                      const SizedBox(width: 8),
+                      const Text('PDF出力対象の選手を選択',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setSt(() {
+                          current = current.length == teamPlayers.length
+                              ? {}
+                              : teamPlayers.map((p) => p.id).toSet();
+                        }),
+                        child: Text(
+                            current.length == teamPlayers.length
+                                ? '全解除'
+                                : '全選択',
+                            style:
+                                TextStyle(color: teamColor, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Text('選択した選手だけがPDFに出力されます',
+                      style:
+                          TextStyle(color: AppTheme.grey, fontSize: 12)),
+                ),
+                Flexible(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    itemCount: teamPlayers.length,
+                    itemBuilder: (_, i) {
+                      final p = teamPlayers[i];
+                      final isSel = current.contains(p.id);
+                      return GestureDetector(
+                        onTap: () => setSt(() {
+                          if (isSel) {
+                            current = Set.from(current)..remove(p.id);
+                          } else {
+                            current = Set.from(current)..add(p.id);
+                          }
+                        }),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSel
+                                ? teamColor.withValues(alpha: 0.12)
+                                : AppTheme.cardBg2,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: isSel
+                                    ? teamColor.withValues(alpha: 0.6)
+                                    : const Color(0xFF444444)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32, height: 32,
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? teamColor.withValues(alpha: 0.25)
+                                      : const Color(0xFF2A2A2A),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: isSel
+                                          ? teamColor
+                                          : const Color(0xFF555555)),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    p.number.isNotEmpty ? p.number : '?',
+                                    style: TextStyle(
+                                        color: isSel
+                                            ? teamColor
+                                            : AppTheme.grey,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(p.name,
+                                    style: TextStyle(
+                                        color: isSel
+                                            ? Colors.white
+                                            : AppTheme.lightGrey,
+                                        fontSize: 14,
+                                        fontWeight: isSel
+                                            ? FontWeight.bold
+                                            : FontWeight.normal)),
+                              ),
+                              Icon(
+                                isSel
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                                color: isSel ? teamColor : AppTheme.grey,
+                                size: 22,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16,
+                      MediaQuery.of(sheetCtx).padding.bottom + 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: teamColor,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _selectedPlayerIds =
+                              current.length == teamPlayers.length
+                                  ? null
+                                  : current;
+                        });
+                        Navigator.pop(sheetCtx);
+                      },
+                      child: Text(
+                        current.isEmpty
+                            ? '選手を選択してください'
+                            : '${current.length}名をPDFに出力',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +260,11 @@ class _PrintScreenState extends State<PrintScreen> {
           ],
         ),
       ),
-      body: Column(
+      body: Consumer<AppProvider>(
+        builder: (context, provider, _) => Column(
         children: [
+          // ── 選手フィルターバー ──
+          _buildFilterBar(context, provider),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -174,13 +391,121 @@ class _PrintScreenState extends State<PrintScreen> {
                           fontSize: 16,
                           fontWeight: FontWeight.bold),
                     ),
-                    onPressed: _isGenerating ? null : _generateAndPrint,
+                    onPressed: _isGenerating
+                        ? null
+                        : () => _generateAndPrint(provider),
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(BuildContext ctx, AppProvider provider) {
+    final hasTeam = _teamFilter != 'ALL';
+    final teamColor = _teamFilter == 'A'
+        ? AppTheme.primaryRed
+        : _teamFilter == 'B'
+            ? Colors.blue
+            : AppTheme.gold;
+    final cnt = _getFilteredPlayers(provider).length;
+    return Container(
+      color: AppTheme.cardBg,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _teamChip('全体', 'ALL'),
+              const SizedBox(width: 6),
+              _teamChip('Aチーム', 'A'),
+              const SizedBox(width: 6),
+              _teamChip('Bチーム', 'B'),
+              if (hasTeam) ...[const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _showPlayerSelectSheet(ctx, provider),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _selectedPlayerIds != null
+                          ? teamColor.withValues(alpha: 0.15)
+                          : AppTheme.cardBg2,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: _selectedPlayerIds != null
+                              ? teamColor
+                              : const Color(0xFF444444)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.person_search,
+                            size: 13,
+                            color: _selectedPlayerIds != null
+                                ? teamColor
+                                : AppTheme.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          _selectedPlayerIds != null
+                              ? '${_selectedPlayerIds!.length}名選択中'
+                              : '選手を選ぶ',
+                          style: TextStyle(
+                            color: _selectedPlayerIds != null
+                                ? teamColor
+                                : AppTheme.grey,
+                            fontSize: 12,
+                            fontWeight: _selectedPlayerIds != null
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('PDF出力対象: $cnt名',
+              style: TextStyle(
+                  color: teamColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _teamChip(String label, String value) {
+    final isSel = _teamFilter == value;
+    final color = value == 'A'
+        ? AppTheme.primaryRed
+        : value == 'B'
+            ? Colors.blue
+            : AppTheme.gold;
+    return GestureDetector(
+      onTap: () => _onTeamChanged(value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSel ? color.withValues(alpha: 0.2) : AppTheme.cardBg2,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: isSel ? color : const Color(0xFF444444)),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: isSel ? color : AppTheme.grey,
+                fontSize: 12,
+                fontWeight:
+                    isSel ? FontWeight.bold : FontWeight.normal)),
       ),
     );
   }
@@ -251,9 +576,8 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  Future<void> _generateAndPrint() async {
+  Future<void> _generateAndPrint(AppProvider provider) async {
     setState(() => _isGenerating = true);
-    final provider = Provider.of<AppProvider>(context, listen: false);
 
     try {
       final pdf = await _buildPdf(provider);
@@ -273,6 +597,7 @@ class _PrintScreenState extends State<PrintScreen> {
   }
 
   Future<pw.Document> _buildPdf(AppProvider provider) async {
+    final filteredPlayers = _getFilteredPlayers(provider);
     final pdf = pw.Document();
     final now = DateTime.now();
     final dateStr = DateFormat('yyyy年M月d日').format(now);
@@ -310,17 +635,17 @@ class _PrintScreenState extends State<PrintScreen> {
           }
 
           if (_inclPlayerStats) {
-            content.add(_buildPdfPlayerStats(provider));
+            content.add(_buildPdfPlayerStats(provider, filteredPlayers));
             content.add(pw.SizedBox(height: 16));
           }
 
           if (_inclServeRanking) {
-            content.add(_buildPdfServeRanking(provider));
+            content.add(_buildPdfServeRanking(provider, filteredPlayers));
             content.add(pw.SizedBox(height: 16));
           }
 
           if (_inclReceiveRanking) {
-            content.add(_buildPdfReceiveRanking(provider));
+            content.add(_buildPdfReceiveRanking(provider, filteredPlayers));
             content.add(pw.SizedBox(height: 16));
           }
 
@@ -432,8 +757,7 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfPlayerStats(AppProvider provider) {
-    final players = provider.players;
+  pw.Widget _buildPdfPlayerStats(AppProvider provider, List<Player> players) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -475,8 +799,7 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfServeRanking(AppProvider provider) {
-    final players = provider.players;
+  pw.Widget _buildPdfServeRanking(AppProvider provider, List<Player> players) {
     final stats = players.map((p) {
       final s = provider.getServeStatsByPlayer(p.id);
       final total = s.values.fold(0, (a, b) => a + b);
@@ -521,8 +844,7 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfReceiveRanking(AppProvider provider) {
-    final players = provider.players;
+  pw.Widget _buildPdfReceiveRanking(AppProvider provider, List<Player> players) {
     final stats = players.map((p) {
       final s = provider.getReceiveStatsByPlayer(p.id);
       final total = s.values.fold(0, (a, b) => a + b);
