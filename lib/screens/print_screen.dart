@@ -22,7 +22,6 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclServeRanking   = true;   // サーブランキング
   bool _inclReceiveRanking = true;   // レシーブランキング
   bool _inclPercentage     = true;   // 割合（%）表示
-  bool _inclTeamComparison = false;  // A/Bチーム比較
   bool _inclPlayerReport   = false;  // 選手個別結果表（1ページ/選手）
   bool _inclAiComment      = false;  // AI講評
 
@@ -308,7 +307,7 @@ class _PrintScreenState extends State<PrintScreen> {
           : DateTimeRange(
               start: DateTime.now().subtract(const Duration(days: 30)),
               end: DateTime.now()),
-      locale: const Locale('ja'),
+      // locale 指定を外す（Webでは白画面バグの原因になる）
       builder: (context, child) => Theme(
         data: ThemeData.dark().copyWith(
           colorScheme: const ColorScheme.dark(
@@ -402,13 +401,6 @@ class _PrintScreenState extends State<PrintScreen> {
                     (v) => setState(() => _inclPercentage = v),
                   ),
                   _buildCheckTile(
-                    'A/Bチーム比較',
-                    'チーム間の成績比較',
-                    Icons.compare_arrows,
-                    _inclTeamComparison,
-                    (v) => setState(() => _inclTeamComparison = v),
-                  ),
-                  _buildCheckTile(
                     '選手個別結果表',
                     '1選手につきA4 1枚：サーブ・レシーブ成績＋ランキング順位＋AI講評',
                     Icons.assignment_ind,
@@ -443,8 +435,8 @@ class _PrintScreenState extends State<PrintScreen> {
                         _infoRow(Icons.palette, '赤・黒・金デザイン（白黒印刷対応）'),
                         const SizedBox(height: 8),
                         _infoRow(Icons.family_restroom, '保護者配布向けレイアウト'),
-                        const SizedBox(height: 8),
-                        _infoRow(Icons.assignment_ind, '選手個別表はA4 1枚/選手で出力'),
+                      const SizedBox(height: 8),
+                      _infoRow(Icons.assignment_ind, '選手個別表はA4 1枚/選手で出力'),
                       ],
                     ),
                   ),
@@ -820,7 +812,6 @@ class _PrintScreenState extends State<PrintScreen> {
     final bool hasSummaryContent = _inclPlayerStats ||
         _inclServeRanking ||
         _inclReceiveRanking ||
-        _inclTeamComparison ||
         _inclAiComment;
 
     if (hasSummaryContent) {
@@ -849,12 +840,6 @@ class _PrintScreenState extends State<PrintScreen> {
             if (_inclReceiveRanking) {
               content.add(_buildPdfReceiveRanking(
                   provider, filteredPlayers, from, to));
-              content.add(pw.SizedBox(height: 16));
-            }
-
-            if (_inclTeamComparison) {
-              content.add(
-                  _buildPdfTeamComparison(provider, from, to));
               content.add(pw.SizedBox(height: 16));
             }
 
@@ -888,7 +873,7 @@ class _PrintScreenState extends State<PrintScreen> {
             header: (ctx) => _buildPdfHeader(dateStr, _periodLabel),
             footer: (ctx) => _buildPdfFooter(ctx),
             build: (ctx) => _buildPdfPlayerReport(
-                provider, player, from, to, aiText),
+                provider, player, filteredPlayers, from, to, aiText),
           ),
         );
       }
@@ -1215,78 +1200,6 @@ class _PrintScreenState extends State<PrintScreen> {
   }
 
   // ────────────────────────────────────────────
-  // A/Bチーム比較
-  // ────────────────────────────────────────────
-  pw.Widget _buildPdfTeamComparison(
-      AppProvider provider, DateTime? from, DateTime? to) {
-    final teamA = provider.teamAPlayers;
-    final teamB = provider.teamBPlayers;
-
-    int sumServe(List<Player> pl) => pl.fold(0, (sum, p) {
-          final s = provider.getServeStatsByPlayer(p.id,
-              from: from, to: to);
-          return sum + s.values.fold(0, (a, b) => a + b);
-        });
-
-    int sumAce(List<Player> pl) => pl.fold(0, (sum, p) {
-          final s = provider.getServeStatsByPlayer(p.id,
-              from: from, to: to);
-          return sum + (s[ServeResult.ace] ?? 0);
-        });
-
-    int sumMiss(List<Player> pl) => pl.fold(0, (sum, p) {
-          final s = provider.getServeStatsByPlayer(p.id,
-              from: from, to: to);
-          return sum + (s[ServeResult.miss] ?? 0);
-        });
-
-    final aTotal = sumServe(teamA);
-    final bTotal = sumServe(teamB);
-    final aAce = aTotal > 0 ? sumAce(teamA) / aTotal * 100 : 0.0;
-    final bAce = bTotal > 0 ? sumAce(teamB) / bTotal * 100 : 0.0;
-    final aMiss = aTotal > 0 ? sumMiss(teamA) / aTotal * 100 : 0.0;
-    final bMiss = bTotal > 0 ? sumMiss(teamB) / bTotal * 100 : 0.0;
-
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        _pdfSectionTitle('A/Bチーム比較'),
-        pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(
-              color: PdfColors.grey300, width: 0.5),
-          children: [
-            pw.TableRow(
-              decoration:
-                  const pw.BoxDecoration(color: PdfColors.red900),
-              children: [
-                _pdfTh(''),
-                _pdfTh('Aチーム'),
-                _pdfTh('Bチーム')
-              ],
-            ),
-            pw.TableRow(children: [
-              _pdfTd('サーブ総数'),
-              _pdfTd('$aTotal'),
-              _pdfTd('$bTotal')
-            ]),
-            pw.TableRow(children: [
-              _pdfTd('エース率'),
-              _pdfTd('${aAce.toStringAsFixed(1)}%'),
-              _pdfTd('${bAce.toStringAsFixed(1)}%')
-            ]),
-            pw.TableRow(children: [
-              _pdfTd('ミス率'),
-              _pdfTd('${aMiss.toStringAsFixed(1)}%'),
-              _pdfTd('${bMiss.toStringAsFixed(1)}%')
-            ]),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // ────────────────────────────────────────────
   // AI講評セクション（全体サマリー末尾用）
   // ────────────────────────────────────────────
   pw.Widget _buildPdfAiCommentSection(AppProvider provider,
@@ -1335,7 +1248,7 @@ class _PrintScreenState extends State<PrintScreen> {
   // 選手個別結果表（A4 1枚/選手）
   // ────────────────────────────────────────────
   List<pw.Widget> _buildPdfPlayerReport(AppProvider provider, Player player,
-      DateTime? from, DateTime? to, String? aiText) {
+      List<Player> filteredPlayers, DateTime? from, DateTime? to, String? aiText) {
     final serveStats =
         provider.getServeStatsByPlayer(player.id, from: from, to: to);
     final receiveStats =
@@ -1354,9 +1267,8 @@ class _PrintScreenState extends State<PrintScreen> {
     final rDirect = receiveStats[ReceiveResult.direct] ?? 0;
     final rMiss = receiveStats[ReceiveResult.miss] ?? 0;
 
-    // サーブランキング（全選手対象）
-    final allPlayers = provider.players;
-    final serveRankData = allPlayers.map((p) {
+    // サーブランキング（filteredPlayers = PDF出力対象選手のみ）
+    final serveRankData = filteredPlayers.map((p) {
       final s = provider.getServeStatsByPlayer(p.id, from: from, to: to);
       final t = s.values.fold(0, (a, b) => a + b);
       final a = s[ServeResult.ace] ?? 0;
@@ -1367,8 +1279,8 @@ class _PrintScreenState extends State<PrintScreen> {
     final serveRank = serveRankData
         .indexWhere((s) => (s['player'] as Player).id == player.id);
 
-    // レシーブランキング（全選手対象）
-    final receiveRankData = allPlayers.map((p) {
+    // レシーブランキング（filteredPlayers = PDF出力対象選手のみ）
+    final receiveRankData = filteredPlayers.map((p) {
       final s =
           provider.getReceiveStatsByPlayer(p.id, from: from, to: to);
       final t = s.values.fold(0, (a, b) => a + b);
