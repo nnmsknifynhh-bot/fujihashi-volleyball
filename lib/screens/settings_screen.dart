@@ -232,11 +232,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               },
               itemBuilder: (context, index) {
                 final player = players[index];
-                return ReorderableDragStartListener(
+                return _buildPlayerCard(
+                  context, player, provider, index,
                   key: ValueKey(player.id),
-                  index: index,
-                  child: _buildPlayerCard(context, player, provider,
-                      key: ValueKey('card_${player.id}')),
                 );
               },
             ),
@@ -390,8 +388,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildPlayerCard(
-      BuildContext context, Player player, AppProvider provider,
+      BuildContext context, Player player, AppProvider provider, int index,
       {required Key key}) {
+    final teamColor = player.team == 'A' ? AppTheme.primaryRed : Colors.blue;
     return Container(
       key: key,
       margin: const EdgeInsets.only(bottom: 8),
@@ -400,65 +399,99 @@ class _SettingsScreenState extends State<SettingsScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF333333)),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: player.team == 'A'
-                ? AppTheme.primaryRed.withValues(alpha: 0.15)
-                : Colors.blue.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              player.number.isNotEmpty ? '#${player.number}' : '?',
-              style: TextStyle(
-                color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+      child: Row(
+        children: [
+          // ── ドラッグハンドル（左端・専用エリア）──
+          ReorderableDragStartListener(
+            index: index,
+            child: Container(
+              width: 44,
+              // カード全体の高さに合わせて縦に広くタッチしやすくする
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                ),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.drag_indicator, color: Color(0xFF666666), size: 22),
+                ],
               ),
             ),
           ),
-        ),
-        title: Text(
-          player.name,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          '${player.team}チーム'
-          '${player.number.isNotEmpty ? " ・背番号 ${player.number}" : ""}',
-          style: const TextStyle(color: AppTheme.grey, fontSize: 12),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit, color: AppTheme.gold, size: 20),
-              onPressed: () =>
-                  _showEditPlayerDialog(context, player, provider),
-              tooltip: '編集',
+          // ── 背番号バッジ ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: teamColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: teamColor),
+              ),
+              child: Center(
+                child: Text(
+                  player.number.isNotEmpty ? '#${player.number}' : '?',
+                  style: TextStyle(
+                    color: teamColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete,
-                  color: AppTheme.primaryRed, size: 20),
-              onPressed: () async {
-                final confirm = await _confirmDelete(context, player.name);
-                if (confirm == true) {
-                  await provider.deletePlayer(player.id);
-                }
-              },
-              tooltip: '削除',
+          ),
+          // ── 名前・チーム ──
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    player.name,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${player.team}チーム'
+                    '${player.number.isNotEmpty ? "  背番号 ${player.number}" : ""}',
+                    style:
+                        const TextStyle(color: AppTheme.grey, fontSize: 12),
+                  ),
+                ],
+              ),
             ),
-            const Icon(Icons.drag_handle, color: AppTheme.grey, size: 20),
-          ],
-        ),
+          ),
+          // ── 編集・削除ボタン ──
+          IconButton(
+            icon: const Icon(Icons.edit, color: AppTheme.gold, size: 20),
+            onPressed: () =>
+                _showEditPlayerDialog(context, player, provider),
+            tooltip: '編集',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete,
+                color: AppTheme.primaryRed, size: 20),
+            onPressed: () async {
+              final confirm = await _confirmDelete(context, player.name);
+              if (confirm == true) {
+                await provider.deletePlayer(player.id);
+              }
+            },
+            tooltip: '削除',
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
     );
   }
