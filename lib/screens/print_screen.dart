@@ -30,7 +30,7 @@ class _PrintScreenState extends State<PrintScreen> {
   Set<String>? _selectedPlayerIds; // null=全員
 
   // ── 期間フィルター ──
-  // 0=全期間, 1=今月, 2=カスタム
+  // 0=全期間 / 1=今月 / 2=今週 / 3=今日 / 4=カスタム
   int _periodMode = 0;
   DateTime? _customFrom;
   DateTime? _customTo;
@@ -38,27 +38,39 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _isGenerating = false;
 
   // ────────────────────────────────────────────
-  // 期間フィルター from/to の計算
+  // 期間フィルター from/to の計算（ローカル時刻で返す）
   // ────────────────────────────────────────────
   DateTime? get _periodFrom {
+    final now = DateTime.now();
     switch (_periodMode) {
-      case 1: // 今月
-        final now = DateTime.now();
+      case 1: // 今月：月初 00:00:00
         return DateTime(now.year, now.month, 1);
-      case 2: // カスタム
-        return _customFrom;
+      case 2: // 今週：月曜 00:00:00
+        return DateTime(now.year, now.month, now.day - (now.weekday - 1));
+      case 3: // 今日：当日 00:00:00
+        return DateTime(now.year, now.month, now.day);
+      case 4: // カスタム：選択開始日 00:00:00
+        return _customFrom != null
+            ? DateTime(_customFrom!.year, _customFrom!.month, _customFrom!.day)
+            : null;
       default:
         return null; // 全期間
     }
   }
 
   DateTime? get _periodTo {
+    final now = DateTime.now();
     switch (_periodMode) {
-      case 1: // 今月（翌月1日 = 今月末まで）
-        final now = DateTime.now();
+      case 1: // 今月：翌月1日 00:00:00（当月末を含む）
         return DateTime(now.year, now.month + 1, 1);
-      case 2:
-        return _customTo?.add(const Duration(days: 1));
+      case 2: // 今週：翌週月曜 00:00:00
+        return DateTime(now.year, now.month, now.day - (now.weekday - 1) + 7);
+      case 3: // 今日：翌日 00:00:00
+        return DateTime(now.year, now.month, now.day + 1);
+      case 4: // カスタム：選択終了日の翌日 00:00:00
+        return _customTo != null
+            ? DateTime(_customTo!.year, _customTo!.month, _customTo!.day + 1)
+            : null;
       default:
         return null;
     }
@@ -69,6 +81,10 @@ class _PrintScreenState extends State<PrintScreen> {
       case 1:
         return '今月';
       case 2:
+        return '今週';
+      case 3:
+        return '今日';
+      case 4:
         if (_customFrom != null && _customTo != null) {
           return '${DateFormat('M/d').format(_customFrom!)}〜${DateFormat('M/d').format(_customTo!)}';
         } else if (_customFrom != null) {
@@ -327,7 +343,7 @@ class _PrintScreenState extends State<PrintScreen> {
       setState(() {
         _customFrom = result.start;
         _customTo = result.end;
-        _periodMode = 2;
+        _periodMode = 4; // カスタムに切り替え
       });
     }
   }
@@ -501,17 +517,23 @@ class _PrintScreenState extends State<PrintScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1行目：全期間 / 今月 / 今週 / 今日
           Row(
             children: [
               _periodChip('全期間', 0),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               _periodChip('今月', 1),
-              const SizedBox(width: 8),
-              _periodChip('カスタム', 2, onTap: () async {
-                await _pickCustomDateRange(context);
-              }),
+              const SizedBox(width: 6),
+              _periodChip('今週', 2),
+              const SizedBox(width: 6),
+              _periodChip('今日', 3),
             ],
           ),
+          const SizedBox(height: 8),
+          // 2行目：カスタム
+          _periodChip('カスタム範囲指定', 4, onTap: () async {
+            await _pickCustomDateRange(context);
+          }),
           if (_periodMode != 0) ...[
             const SizedBox(height: 8),
             Row(

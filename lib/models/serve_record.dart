@@ -54,20 +54,27 @@ class ServeRecord {
         'matchId': matchId,
         'playerId': playerId,
         'result': result.index,
-        'timestamp': timestamp.toIso8601String(),
+        // 常にUTC + 'Z'サフィックス付きで保存（タイムゾーンを明示）
+        'timestamp': timestamp.toUtc().toIso8601String(),
       };
 
   factory ServeRecord.fromJson(Map<String, dynamic> json) {
-    // FirestoreのTimestamp型と文字列型の両方に対応
     DateTime ts;
     final rawTs = json['timestamp'];
     if (rawTs == null) {
       ts = DateTime.now();
     } else if (rawTs is String) {
-      // UTC文字列をローカル時間に変換（JSTズレ対策）
-      ts = DateTime.parse(rawTs).toLocal();
+      // 'Z'または'+'があればタイムゾーン付き→そのままパースしてローカル変換
+      // タイムゾーンなし→局時刺なしローカル時刺として解釈（旧データ互換性維持）
+      final hasTimezone = rawTs.endsWith('Z') || rawTs.contains('+');
+      if (hasTimezone) {
+        ts = DateTime.parse(rawTs).toLocal();
+      } else {
+        // タイムゾーン情報なし = 保存時のローカル時刺（JST）として扱う
+        ts = DateTime.parse(rawTs); // isLocal=true
+      }
     } else {
-      // Firestore Timestamp型 → .toDate()でDateTime取得してローカル変換
+      // Firestore Timestamp型
       try {
         ts = ((rawTs as dynamic).toDate() as DateTime).toLocal();
       } catch (_) {
@@ -140,20 +147,24 @@ class ReceiveRecord {
         'matchId': matchId,
         'playerId': playerId,
         'result': result.index,
-        'timestamp': timestamp.toIso8601String(),
+        // 常にUTC + 'Z'サフィックス付きで保存（タイムゾーンを明示）
+        'timestamp': timestamp.toUtc().toIso8601String(),
       };
 
   factory ReceiveRecord.fromJson(Map<String, dynamic> json) {
-    // FirestoreのTimestamp型と文字列型の両方に対応
     DateTime ts;
     final rawTs = json['timestamp'];
     if (rawTs == null) {
       ts = DateTime.now();
     } else if (rawTs is String) {
-      // UTC文字列をローカル時間に変換（JSTズレ対策）
-      ts = DateTime.parse(rawTs).toLocal();
+      final hasTimezone = rawTs.endsWith('Z') || rawTs.contains('+');
+      if (hasTimezone) {
+        ts = DateTime.parse(rawTs).toLocal();
+      } else {
+        ts = DateTime.parse(rawTs); // isLocal=true
+      }
     } else {
-      // Firestore Timestamp型 → .toDate()でDateTime取得してローカル変換
+      // Firestore Timestamp型
       try {
         ts = ((rawTs as dynamic).toDate() as DateTime).toLocal();
       } catch (_) {
