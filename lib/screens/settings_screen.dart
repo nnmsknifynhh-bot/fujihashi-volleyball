@@ -667,6 +667,9 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // 全選手の生データを表示（デバッグ用）
   void _showAllPlayersDebug(BuildContext context, AppProvider provider) {
+    final orphanIds = provider.orphanPlayerIds;
+    final orphanCounts = provider.orphanRecordCounts;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -675,15 +678,155 @@ class _SettingsScreenState extends State<SettingsScreen>
           children: [
             const Icon(Icons.manage_search, color: Colors.orange, size: 20),
             const SizedBox(width: 8),
-            Text('全選手一覧（${provider.players.length}名）',
-                style: const TextStyle(color: Colors.white, fontSize: 16)),
+            Text('全選手確認（${provider.players.length}名登録）',
+                style: const TextStyle(color: Colors.white, fontSize: 15)),
           ],
         ),
         content: SizedBox(
           width: double.maxFinite,
-          height: 400,
+          height: 450,
           child: ListView(
-            children: provider.players.map((p) {
+            children: [
+              // 孤立記録セクション（記録あり・選手登録なし）
+              if (orphanIds.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withValues(alpha: 0.5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.red, size: 14),
+                          SizedBox(width: 4),
+                          Text('記録はあるが選手未登録のID',
+                              style: TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '→ これらのIDに名前を付けて登録することで\n  集計に反映されます',
+                        style: TextStyle(color: Colors.orange, fontSize: 10),
+                      ),
+                      const SizedBox(height: 8),
+                      ...orphanIds.map((pid) {
+                        final count = orphanCounts[pid] ?? 0;
+                        final nameCtrl = TextEditingController();
+                        final numberCtrl = TextEditingController();
+                        return StatefulBuilder(
+                          builder: (ctx, setSt) => Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.cardBg2,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'ID: ${pid.substring(0, 8)}...  記録${count}件',
+                                  style: const TextStyle(
+                                      color: AppTheme.grey, fontSize: 10),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: nameCtrl,
+                                        style: const TextStyle(
+                                            color: Colors.white, fontSize: 12),
+                                        decoration: const InputDecoration(
+                                          hintText: '名前を入力',
+                                          hintStyle: TextStyle(
+                                              color: AppTheme.grey,
+                                              fontSize: 12),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 6),
+                                          border: OutlineInputBorder(),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    SizedBox(
+                                      width: 60,
+                                      child: TextField(
+                                        controller: numberCtrl,
+                                        style: const TextStyle(
+                                            color: Colors.white, fontSize: 12),
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          hintText: '番号',
+                                          hintStyle: TextStyle(
+                                              color: AppTheme.grey,
+                                              fontSize: 12),
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 6),
+                                          border: OutlineInputBorder(),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primaryRed,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 6),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      onPressed: () async {
+                                        if (nameCtrl.text.trim().isEmpty) return;
+                                        // 既存IDで選手を登録（記録と紐づく）
+                                        await provider.addPlayerWithId(
+                                          id: pid,
+                                          name: nameCtrl.text.trim(),
+                                          number: numberCtrl.text.trim(),
+                                          team: 'A',
+                                        );
+                                        if (context.mounted) {
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(SnackBar(
+                                            content: Text(
+                                                '${nameCtrl.text.trim()} をAチームに登録しました（記録${count}件が紐づきました）'),
+                                            backgroundColor: Colors.green,
+                                          ));
+                                        }
+                                      },
+                                      child: const Text('A登録',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+                const Divider(color: Color(0xFF444444)),
+                const SizedBox(height: 4),
+              ],
+              // 通常の登録済み選手一覧
+              ...provider.players.map((p) {
+
               final teamNorm = AppProvider.normalizeTeamPublic(p.team);
               final isOk = teamNorm == 'A' || teamNorm == 'B';
               return Container(
@@ -776,6 +919,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               );
             }).toList(),
+            ], // ListView children の閉じ
           ),
         ),
         actions: [
