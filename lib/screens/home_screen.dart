@@ -230,11 +230,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       onTap: () {
         provider.setCurrentMatch(match.id);
         provider.setCurrentTeam(match.team);
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${match.team}チーム vs ${match.opponent} を選択しました'),
-            backgroundColor: AppTheme.primaryRed,
-            duration: const Duration(seconds: 1),
+            content: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '${match.team}チーム「${match.opponent}」を選択',
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF2A2A2A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: AppTheme.gold.withValues(alpha: 0.6)),
+            ),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            duration: const Duration(milliseconds: 1500),
           ),
         );
       },
