@@ -1057,70 +1057,86 @@ class _PrintScreenState extends State<PrintScreen> {
   // ────────────────────────────────────────────
   pw.Widget _buildPdfServeRanking(AppProvider provider, List<Player> players,
       DateTime? from, DateTime? to) {
-    final stats = players.map((p) {
+    // 各選手の集計
+    final raw = players.map((p) {
       final s = provider.getServeStatsByPlayer(p.id, from: from, to: to);
       final total = s.values.fold(0, (a, b) => a + b);
-      final ace = s[ServeResult.ace] ?? 0;
-      final miss = s[ServeResult.miss] ?? 0;
-      final aceRate = total > 0 ? ace / total * 100 : 0.0;
-      final missRate = total > 0 ? miss / total * 100 : 0.0;
+      final ace   = s[ServeResult.ace]   ?? 0;
+      final under = s[ServeResult.under] ?? 0;
+      final miss  = s[ServeResult.miss]  ?? 0;
+      final aceRate      = total > 0 ? ace / total * 100           : 0.0;
+      final aceUnderRate = total > 0 ? (ace + under) / total * 100 : 0.0;
+      final missRate     = total > 0 ? miss / total * 100          : 0.0;
       return {
-        'player': p,
-        'total': total,
-        'aceRate': aceRate,
-        'missRate': missRate
+        'player':       p,
+        'total':        total,
+        'aceRate':      aceRate,
+        'aceUnderRate': aceUnderRate,
+        'missRate':     missRate,
       };
     }).where((s) => (s['total'] as int) > 0).toList();
 
-    stats.sort((a, b) =>
-        (b['aceRate'] as double).compareTo(a['aceRate'] as double));
+    // エース率順
+    final byAce = List.of(raw)
+      ..sort((a, b) => (b['aceRate'] as double).compareTo(a['aceRate'] as double));
+    // エース＋崩し率順
+    final byAceUnder = List.of(raw)
+      ..sort((a, b) => (b['aceUnderRate'] as double).compareTo(a['aceUnderRate'] as double));
+
+    pw.Widget rankTable(
+        String title, List<Map<String, dynamic>> ranked, String rateKey, String rateLabel) {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _pdfSubSectionTitle(title),
+          pw.SizedBox(height: 4),
+          if (ranked.isEmpty)
+            pw.Text('データなし', style: const pw.TextStyle(color: PdfColors.grey))
+          else
+            pw.Table(
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.red900),
+                  children: [
+                    _pdfTh('順位'),
+                    _pdfTh('選手名'),
+                    _pdfTh('サーブ数'),
+                    _pdfTh(rateLabel),
+                    _pdfTh('ミス率'),
+                  ],
+                ),
+                ...ranked.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final s   = e.value;
+                  final p   = s['player'] as Player;
+                  return pw.TableRow(
+                    decoration: idx == 0
+                        ? const pw.BoxDecoration(color: PdfColors.amber50)
+                        : null,
+                    children: [
+                      _pdfTd('${idx + 1}位'),
+                      _pdfTd(p.name),
+                      _pdfTd('${s['total']}本'),
+                      _pdfTd('${(s[rateKey] as double).toStringAsFixed(1)}%'),
+                      _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
+                    ],
+                  );
+                }),
+              ],
+            ),
+        ],
+      );
+    }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('サーブランキング（エース率順）'),
+        _pdfSectionTitle('サーブランキング'),
         pw.SizedBox(height: 8),
-        if (stats.isEmpty)
-          pw.Text('データなし',
-              style: const pw.TextStyle(color: PdfColors.grey))
-        else
-          pw.Table(
-            border: pw.TableBorder.all(
-                color: PdfColors.grey300, width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.red900),
-                children: [
-                  _pdfTh('順位'),
-                  _pdfTh('選手名'),
-                  _pdfTh('サーブ数'),
-                  _pdfTh('エース率'),
-                  _pdfTh('ミス率')
-                ],
-              ),
-              ...stats.asMap().entries.map((e) {
-                final idx = e.key;
-                final s = e.value;
-                final p = s['player'] as Player;
-                return pw.TableRow(
-                  decoration: idx == 0
-                      ? const pw.BoxDecoration(
-                          color: PdfColors.amber50)
-                      : null,
-                  children: [
-                    _pdfTd('${idx + 1}位'),
-                    _pdfTd(p.name),
-                    _pdfTd('${s['total']}本'),
-                    _pdfTd(
-                        '${(s['aceRate'] as double).toStringAsFixed(1)}%'),
-                    _pdfTd(
-                        '${(s['missRate'] as double).toStringAsFixed(1)}%'),
-                  ],
-                );
-              }),
-            ],
-          ),
+        rankTable('① エース率順', byAce,      'aceRate',      'エース率'),
+        pw.SizedBox(height: 10),
+        rankTable('② エース＋崩し率順', byAceUnder, 'aceUnderRate', 'エース＋崩し率'),
       ],
     );
   }
@@ -1267,16 +1283,28 @@ class _PrintScreenState extends State<PrintScreen> {
     final rDirect = receiveStats[ReceiveResult.direct] ?? 0;
     final rMiss = receiveStats[ReceiveResult.miss] ?? 0;
 
-    // サーブランキング（filteredPlayers = PDF出力対象選手のみ）
+    // サーブランキング：エース率順（filteredPlayers = PDF出力対象選手のみ）
     final serveRankData = filteredPlayers.map((p) {
-      final s = provider.getServeStatsByPlayer(p.id, from: from, to: to);
-      final t = s.values.fold(0, (a, b) => a + b);
-      final a = s[ServeResult.ace] ?? 0;
-      return {'player': p, 'total': t, 'aceRate': t > 0 ? a / t * 100 : 0.0};
+      final s     = provider.getServeStatsByPlayer(p.id, from: from, to: to);
+      final t     = s.values.fold(0, (a, b) => a + b);
+      final ace   = s[ServeResult.ace]   ?? 0;
+      final under = s[ServeResult.under] ?? 0;
+      return {
+        'player':       p,
+        'total':        t,
+        'aceRate':      t > 0 ? ace / t * 100           : 0.0,
+        'aceUnderRate': t > 0 ? (ace + under) / t * 100 : 0.0,
+      };
     }).where((s) => (s['total'] as int) > 0).toList();
-    serveRankData.sort(
-        (a, b) => (b['aceRate'] as double).compareTo(a['aceRate'] as double));
-    final serveRank = serveRankData
+    // エース率順
+    final serveByAce = List.of(serveRankData)
+      ..sort((a, b) => (b['aceRate'] as double).compareTo(a['aceRate'] as double));
+    final serveRankAce = serveByAce
+        .indexWhere((s) => (s['player'] as Player).id == player.id);
+    // エース＋崩し率順
+    final serveByAceUnder = List.of(serveRankData)
+      ..sort((a, b) => (b['aceUnderRate'] as double).compareTo(a['aceUnderRate'] as double));
+    final serveRankAceUnder = serveByAceUnder
         .indexWhere((s) => (s['player'] as Player).id == player.id);
 
     // レシーブランキング（filteredPlayers = PDF出力対象選手のみ）
@@ -1424,99 +1452,42 @@ class _PrintScreenState extends State<PrintScreen> {
       pw.SizedBox(height: 6),
       pw.Row(
         children: [
-          // サーブ順位
+          // サーブ順位①：エース率
           pw.Expanded(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(
-                    color: PdfColors.grey300, width: 0.5),
-                borderRadius:
-                    const pw.BorderRadius.all(pw.Radius.circular(4)),
-              ),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Text('サーブ（エース率）',
-                      style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.red900)),
-                  pw.SizedBox(height: 4),
-                  if (serveRank >= 0) ...[
-                    pw.Text(
-                      '${serveRank + 1}位',
-                      style: pw.TextStyle(
-                          fontSize: 22,
-                          fontWeight: pw.FontWeight.bold,
-                          color: serveRank == 0
-                              ? PdfColors.amber700
-                              : PdfColors.red800),
-                    ),
-                    pw.Text(
-                      '/ ${serveRankData.length}人中',
-                      style: const pw.TextStyle(
-                          fontSize: 9, color: PdfColors.grey),
-                    ),
-                    pw.Text(
-                      'エース率: ${(serveRankData[serveRank]['aceRate'] as double).toStringAsFixed(1)}%',
-                      style: const pw.TextStyle(
-                          fontSize: 8, color: PdfColors.grey700),
-                    ),
-                  ] else
-                    pw.Text('記録なし',
-                        style: const pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey)),
-                ],
-              ),
+            child: _pdfRankBox(
+              label: 'サーブ\nエース率',
+              rank: serveRankAce,
+              total: serveByAce.length,
+              rateLabel: 'エース率',
+              rateValue: serveRankAce >= 0
+                  ? (serveByAce[serveRankAce]['aceRate'] as double)
+                  : null,
             ),
           ),
-          pw.SizedBox(width: 10),
+          pw.SizedBox(width: 6),
+          // サーブ順位②：エース＋崩し率
+          pw.Expanded(
+            child: _pdfRankBox(
+              label: 'サーブ\nエース＋崩し率',
+              rank: serveRankAceUnder,
+              total: serveByAceUnder.length,
+              rateLabel: 'エース＋崩し率',
+              rateValue: serveRankAceUnder >= 0
+                  ? (serveByAceUnder[serveRankAceUnder]['aceUnderRate'] as double)
+                  : null,
+            ),
+          ),
+          pw.SizedBox(width: 6),
           // レシーブ順位
           pw.Expanded(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(
-                    color: PdfColors.grey300, width: 0.5),
-                borderRadius:
-                    const pw.BorderRadius.all(pw.Radius.circular(4)),
-              ),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Text('レシーブ（オーバー率）',
-                      style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.red900)),
-                  pw.SizedBox(height: 4),
-                  if (receiveRank >= 0) ...[
-                    pw.Text(
-                      '${receiveRank + 1}位',
-                      style: pw.TextStyle(
-                          fontSize: 22,
-                          fontWeight: pw.FontWeight.bold,
-                          color: receiveRank == 0
-                              ? PdfColors.amber700
-                              : PdfColors.red800),
-                    ),
-                    pw.Text(
-                      '/ ${receiveRankData.length}人中',
-                      style: const pw.TextStyle(
-                          fontSize: 9, color: PdfColors.grey),
-                    ),
-                    pw.Text(
-                      'オーバー率: ${(receiveRankData[receiveRank]['overRate'] as double).toStringAsFixed(1)}%',
-                      style: const pw.TextStyle(
-                          fontSize: 8, color: PdfColors.grey700),
-                    ),
-                  ] else
-                    pw.Text('記録なし',
-                        style: const pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey)),
-                ],
-              ),
+            child: _pdfRankBox(
+              label: 'レシーブ\nオーバー率',
+              rank: receiveRank,
+              total: receiveRankData.length,
+              rateLabel: 'オーバー率',
+              rateValue: receiveRank >= 0
+                  ? (receiveRankData[receiveRank]['overRate'] as double)
+                  : null,
             ),
           ),
         ],
@@ -1674,6 +1645,75 @@ class _PrintScreenState extends State<PrintScreen> {
             fontSize: 13,
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.red900),
+      ),
+    );
+  }
+
+  // ランキング枠（個別選手ページ用）
+  pw.Widget _pdfRankBox({
+    required String label,
+    required int rank,
+    required int total,
+    required String rateLabel,
+    required double? rateValue,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.red900),
+            textAlign: pw.TextAlign.center,
+          ),
+          pw.SizedBox(height: 4),
+          if (rank >= 0 && rateValue != null) ...[
+            pw.Text(
+              '${rank + 1}位',
+              style: pw.TextStyle(
+                  fontSize: 20,
+                  fontWeight: pw.FontWeight.bold,
+                  color: rank == 0 ? PdfColors.amber700 : PdfColors.red800),
+            ),
+            pw.Text(
+              '/ $total人中',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+            ),
+            pw.Text(
+              '$rateLabel: ${rateValue.toStringAsFixed(1)}%',
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+            ),
+          ] else
+            pw.Text('記録なし',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey)),
+        ],
+      ),
+    );
+  }
+
+  // ランキング小見出し（① ② など）
+  pw.Widget _pdfSubSectionTitle(String title) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: const pw.BoxDecoration(
+        color: PdfColors.grey100,
+        border:
+            pw.Border(left: pw.BorderSide(color: PdfColors.amber700, width: 2)),
+      ),
+      child: pw.Text(
+        title,
+        style: pw.TextStyle(
+            fontSize: 10,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.grey800),
       ),
     );
   }
