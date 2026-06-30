@@ -273,27 +273,42 @@ class _PrintScreenState extends State<PrintScreen> {
     }
   }
 
+  // フォントをフィールドとして保持（全メソッドで共有）
+  pw.Font? _regularFont;
+  pw.Font? _boldFont;
+
+  pw.TextStyle _style({
+    double fontSize = 10,
+    bool bold = false,
+    PdfColor color = PdfColors.black,
+  }) {
+    return pw.TextStyle(
+      font: bold ? _boldFont : _regularFont,
+      fontSize: fontSize,
+      color: color,
+    );
+  }
+
   Future<pw.Document> _buildPdf(AppProvider provider) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final dateStr = DateFormat('yyyy年M月d日').format(now);
 
     // 日本語フォント（ローカルアセットから読み込み・オフライン対応）
-    final pw.Font regularFont;
-    final pw.Font boldFont;
     try {
       final regularData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
       final boldData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
-      regularFont = pw.Font.ttf(regularData);
-      boldFont = pw.Font.ttf(boldData);
+      _regularFont = pw.Font.ttf(regularData);
+      _boldFont = pw.Font.ttf(boldData);
     } catch (e) {
       throw Exception('日本語フォントの読み込みに失敗しました。\n詳細: $e');
     }
+
     final theme = pw.ThemeData.withFont(
-      base: regularFont,
-      bold: boldFont,
-      italic: regularFont,
-      boldItalic: boldFont,
+      base: _regularFont!,
+      bold: _boldFont!,
+      italic: _regularFont!,
+      boldItalic: _boldFont!,
     );
 
     pdf.addPage(
@@ -332,7 +347,8 @@ class _PrintScreenState extends State<PrintScreen> {
           }
 
           if (content.isEmpty) {
-            content.add(pw.Text('出力項目が選択されていません'));
+            content.add(pw.Text('出力項目が選択されていません',
+                style: _style()));
           }
 
           return content;
@@ -359,19 +375,15 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text(
                 '藤橋JVC男子 バレーボール分析レポート',
-                style: pw.TextStyle(
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.red900,
-                ),
+                style: _style(fontSize: 16, bold: true, color: PdfColors.red900),
               ),
               pw.Text(
                 'この一本、この一点',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.amber800),
+                style: _style(fontSize: 10, color: PdfColors.amber800),
               ),
             ],
           ),
-          pw.Text(dateStr, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+          pw.Text(dateStr, style: _style(fontSize: 10, color: PdfColors.grey)),
         ],
       ),
     );
@@ -387,9 +399,9 @@ class _PrintScreenState extends State<PrintScreen> {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text('藤橋JVC男子 バレーボール分析アプリ',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+              style: _style(fontSize: 8, color: PdfColors.grey)),
           pw.Text('${context.pageNumber} / ${context.pagesCount}',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+              style: _style(fontSize: 8, color: PdfColors.grey)),
         ],
       ),
     );
@@ -403,7 +415,7 @@ class _PrintScreenState extends State<PrintScreen> {
         _pdfSectionTitle('試合別結果'),
         pw.SizedBox(height: 8),
         if (matches.isEmpty)
-          pw.Text('試合データなし', style: const pw.TextStyle(color: PdfColors.grey))
+          pw.Text('試合データなし', style: _style(color: PdfColors.grey))
         else
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
@@ -631,7 +643,7 @@ class _PrintScreenState extends State<PrintScreen> {
       ),
       child: pw.Text(
         title,
-        style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.red900),
+        style: _style(fontSize: 13, bold: true, color: PdfColors.red900),
       ),
     );
   }
@@ -641,7 +653,7 @@ class _PrintScreenState extends State<PrintScreen> {
       padding: const pw.EdgeInsets.all(5),
       child: pw.Text(
         text,
-        style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+        style: _style(fontSize: 9, bold: true, color: PdfColors.white),
         textAlign: pw.TextAlign.center,
       ),
     );
@@ -652,7 +664,7 @@ class _PrintScreenState extends State<PrintScreen> {
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
         text,
-        style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
+        style: _style(fontSize: 9, color: PdfColors.black),
         textAlign: pw.TextAlign.center,
       ),
     );
