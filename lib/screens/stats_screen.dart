@@ -8,7 +8,7 @@ import '../utils/app_theme.dart';
 import 'ai_comment_screen.dart';
 import 'print_screen.dart';
 
-enum PeriodFilter { today, week, month, custom, all }
+enum PeriodFilter { today, custom, all }
 enum TeamFilter { all, a, b }
 
 // 選手選択モード（チームフィルターがA or Bのとき有効）
@@ -23,7 +23,7 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  PeriodFilter _period = PeriodFilter.today;
+  PeriodFilter _period = PeriodFilter.all;
   TeamFilter _teamFilter = TeamFilter.all;
   DateTimeRange? _customRange;
   // ignore: unused_field
@@ -52,34 +52,26 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     final now = DateTime.now();
     switch (_period) {
       case PeriodFilter.today:
-        // 今日の00:00:00〜翌日の00:00:00（境界を含む判定のため翌日始点を使う）
-        final todayStart = DateTime(now.year, now.month, now.day);
-        final todayEnd = DateTime(now.year, now.month, now.day + 1);
-        return DateTimeRange(start: todayStart, end: todayEnd);
-      case PeriodFilter.week:
-        final weekStart = now.subtract(Duration(days: now.weekday - 1));
-        final weekStartDay = DateTime(weekStart.year, weekStart.month, weekStart.day);
-        // 今週末の翌日00:00:00まで
-        final weekEnd = weekStartDay.add(const Duration(days: 7));
-        return DateTimeRange(start: weekStartDay, end: weekEnd);
-      case PeriodFilter.month:
-        final monthStart = DateTime(now.year, now.month, 1);
-        // 翌月の1日00:00:00まで
-        final monthEnd = DateTime(now.year, now.month + 1, 1);
-        return DateTimeRange(start: monthStart, end: monthEnd);
+        // 今日 00:00:00 〜 翌日 00:00:00（UTC統一比較対応）
+        final start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        final end   = DateTime(now.year, now.month, now.day + 1, 0, 0, 0);
+        return DateTimeRange(start: start, end: end);
       case PeriodFilter.custom:
         if (_customRange == null) return null;
-        // カスタム期間: 開始日の00:00:00〜終了日の翌日00:00:00
+        // カスタム: 開始日 00:00:00 〜 終了日の翌日 00:00:00
         final cStart = DateTime(
           _customRange!.start.year,
           _customRange!.start.month,
           _customRange!.start.day,
+          0, 0, 0,
         );
-        final cEnd = DateTime(
+        final cEndBase = DateTime(
           _customRange!.end.year,
           _customRange!.end.month,
-          _customRange!.end.day + 1,
+          _customRange!.end.day,
+          0, 0, 0,
         );
+        final cEnd = cEndBase.add(const Duration(days: 1));
         return DateTimeRange(start: cStart, end: cEnd);
       case PeriodFilter.all:
         return null;
@@ -199,10 +191,6 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             child: Row(
               children: [
                 _periodChip('今日', PeriodFilter.today),
-                const SizedBox(width: 6),
-                _periodChip('今週', PeriodFilter.week),
-                const SizedBox(width: 6),
-                _periodChip('今月', PeriodFilter.month),
                 const SizedBox(width: 6),
                 _periodChip('全期間', PeriodFilter.all),
                 const SizedBox(width: 6),

@@ -12,7 +12,7 @@ extension ServeResultExtension on ServeResult {
       case ServeResult.ace:
         return '決まり';
       case ServeResult.under:
-        return 'アンダー・二段';
+        return '二段チャンス';
       case ServeResult.justIn:
         return '入っただけ';
       case ServeResult.miss:
@@ -25,7 +25,7 @@ extension ServeResultExtension on ServeResult {
       case ServeResult.ace:
         return '決まり';
       case ServeResult.under:
-        return 'アンダー\n二段';
+        return '二段\nチャンス';
       case ServeResult.justIn:
         return '入っただけ';
       case ServeResult.miss:

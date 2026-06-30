@@ -229,63 +229,202 @@ class _MainScreenState extends State<MainScreen> {
         color: Color(0xFF0D0D0D),
         border: Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 1)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black,
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
+          BoxShadow(color: Colors.black, blurRadius: 8, offset: Offset(0, -2)),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
-        backgroundColor: Colors.transparent,
-        selectedItemColor: AppTheme.gold,
-        unselectedItemColor: AppTheme.grey,
-        selectedLabelStyle: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 10,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(
+            children: [
+              _navItem(Icons.home_rounded, Icons.home_outlined, 'ホーム', 0),
+              _serveNavItem(1),
+              _receiveNavItem(2),
+              _navItem(Icons.bar_chart_rounded, Icons.bar_chart_outlined, '集計', 3),
+              _navItem(Icons.settings_rounded, Icons.settings_outlined, '設定', 4),
+            ],
+          ),
         ),
-        unselectedLabelStyle: const TextStyle(fontSize: 10),
-        type: BottomNavigationBarType.fixed,
-        elevation: 0,
-        items: [
-          _navItem(Icons.home_rounded, Icons.home_outlined, 'ホーム', 0),
-          _navItem(Icons.sports_volleyball, Icons.sports_volleyball_outlined, 'サーブ', 1),
-          _navItem(Icons.back_hand_rounded, Icons.back_hand_outlined, 'レシーブ', 2),
-          _navItem(Icons.bar_chart_rounded, Icons.bar_chart_outlined, '集計', 3),
-          _navItem(Icons.settings_rounded, Icons.settings_outlined, '設定', 4),
-        ],
       ),
     );
   }
 
-  BottomNavigationBarItem _navItem(
-    IconData activeIcon,
-    IconData inactiveIcon,
-    String label,
-    int index,
-  ) {
+  // 通常ナビアイテム
+  Widget _navItem(IconData activeIcon, IconData inactiveIcon, String label, int index) {
     final isSelected = _currentIndex == index;
-    return BottomNavigationBarItem(
-      icon: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryRed.withValues(alpha: 0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: isSelected
-              ? Border.all(color: AppTheme.primaryRed.withValues(alpha: 0.3))
-              : null,
-        ),
-        child: Icon(
-          isSelected ? activeIcon : inactiveIcon,
-          size: 22,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _currentIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.primaryRed.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? activeIcon : inactiveIcon,
+                color: isSelected ? AppTheme.gold : AppTheme.grey,
+                size: 22,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? AppTheme.gold : AppTheme.grey,
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      label: label,
+    );
+  }
+
+  // サーブ専用ナビアイテム（目立つデザイン）
+  Widget _serveNavItem(int index) {
+    final isSelected = _currentIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _currentIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: BoxDecoration(
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [Color(0xFF8B0000), AppTheme.primaryRed],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSelected ? null : const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.primaryRed
+                  : const Color(0xFF333333),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: isSelected
+                ? [BoxShadow(
+                    color: AppTheme.primaryRed.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  )]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.sports_volleyball,
+                color: isSelected ? Colors.white : const Color(0xFF884444),
+                size: 20,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'サーブ',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : const Color(0xFF884444),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(height: 1),
+                Container(
+                  width: 20,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // レシーブ専用ナビアイテム（目立つデザイン）
+  Widget _receiveNavItem(int index) {
+    final isSelected = _currentIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _currentIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          decoration: BoxDecoration(
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [Color(0xFF003080), Colors.blue],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSelected ? null : const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? Colors.blue : const Color(0xFF333333),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: isSelected
+                ? [BoxShadow(
+                    color: Colors.blue.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  )]
+                : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.back_hand_rounded,
+                color: isSelected ? Colors.white : const Color(0xFF334488),
+                size: 20,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'レシーブ',
+                style: TextStyle(
+                  color: isSelected ? Colors.white : const Color(0xFF334488),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(height: 1),
+                Container(
+                  width: 20,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

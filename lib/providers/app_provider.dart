@@ -33,6 +33,26 @@ class AppProvider extends ChangeNotifier {
   String? get currentMatchId => _currentMatchId;
   bool get isLoading => _isLoading;
 
+  // 記録データに存在するがplayersに未登録のplayerId一覧
+  Set<String> get orphanPlayerIds {
+    final registeredIds = _players.map((p) => p.id).toSet();
+    final serveIds = _serveRecords.map((r) => r.playerId).toSet();
+    final receiveIds = _receiveRecords.map((r) => r.playerId).toSet();
+    final allRecordIds = {...serveIds, ...receiveIds};
+    return allRecordIds.difference(registeredIds);
+  }
+
+  // 孤立playerIdごとの記録件数
+  Map<String, int> get orphanRecordCounts {
+    final result = <String, int>{};
+    for (final pid in orphanPlayerIds) {
+      final sc = _serveRecords.where((r) => r.playerId == pid).length;
+      final rc = _receiveRecords.where((r) => r.playerId == pid).length;
+      result[pid] = sc + rc;
+    }
+    return result;
+  }
+
   // チーム名を正規化（大文字・半角・トリム）して比較
   static String _normalizeTeam(String t) => t.trim().toUpperCase()
       .replaceAll('Ａ', 'A').replaceAll('Ｂ', 'B'); // 全角対応
@@ -247,6 +267,11 @@ class AppProvider extends ChangeNotifier {
     await _db.collection('serve_records').doc(recordId).delete();
   }
 
+  // ── レシーブ記録を削除 ──
+  Future<void> deleteReceiveRecord(String recordId) async {
+    await _db.collection('receive_records').doc(recordId).delete();
+  }
+
   // ── レシーブ記録を追加 ──
   Future<void> addReceiveRecord({
     required String matchId,
@@ -272,6 +297,26 @@ class AppProvider extends ChangeNotifier {
     if (records.isNotEmpty) {
       await _db.collection('receive_records').doc(records.first.id).delete();
     }
+  }
+
+  // ── 選手を追加（IDを指定して登録：孤立記録との紐づけ用）──
+  Future<void> addPlayerWithId({
+    required String id,
+    required String name,
+    String number = '',
+    String team = 'A',
+  }) async {
+    final maxOrder = _players.isEmpty
+        ? 0
+        : _players.map((p) => p.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
+    final player = Player(
+      id: id, // 既存IDをそのまま使う（記録と紐づく）
+      name: name,
+      number: number,
+      team: _normalizeTeam(team),
+      sortOrder: maxOrder,
+    );
+    await _db.collection('players').doc(id).set(player.toJson());
   }
 
   // ── 選手を追加 ──

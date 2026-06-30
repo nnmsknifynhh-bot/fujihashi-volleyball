@@ -12,7 +12,11 @@ class ServeScreen extends StatefulWidget {
 }
 
 class _ServeScreenState extends State<ServeScreen> {
-  String? _lastUndoPlayerId;
+  // 選手ハイライト（タップでON/OFF）
+  Set<String> _highlightedPlayerIds = {};
+
+  // 取り消しメニュー表示中の選手ID
+  String? _undoMenuPlayerId;
 
   @override
   Widget build(BuildContext context) {
@@ -55,9 +59,7 @@ class _ServeScreenState extends State<ServeScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border(
-          bottom: BorderSide(color: opponentColor, width: 2),
-        ),
+        border: Border(bottom: BorderSide(color: opponentColor, width: 2)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Column(
@@ -100,13 +102,17 @@ class _ServeScreenState extends State<ServeScreen> {
                         : Colors.blue.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: provider.currentTeam == 'A' ? AppTheme.primaryRed : Colors.blue,
+                      color: provider.currentTeam == 'A'
+                          ? AppTheme.primaryRed
+                          : Colors.blue,
                     ),
                   ),
                   child: Text(
                     '${provider.currentTeam}チーム',
                     style: TextStyle(
-                      color: provider.currentTeam == 'A' ? AppTheme.primaryRed : Colors.blue,
+                      color: provider.currentTeam == 'A'
+                          ? AppTheme.primaryRed
+                          : Colors.blue,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -166,13 +172,15 @@ class _ServeScreenState extends State<ServeScreen> {
     );
   }
 
-  Widget _buildServeGrid(AppProvider provider, dynamic currentMatch, List players) {
+  Widget _buildServeGrid(
+      AppProvider provider, dynamic currentMatch, List players) {
     if (players.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_off, color: AppTheme.grey.withValues(alpha: 0.4), size: 64),
+            Icon(Icons.person_off,
+                color: AppTheme.grey.withValues(alpha: 0.4), size: 64),
             const SizedBox(height: 16),
             const Text('選手が登録されていません',
                 style: TextStyle(color: AppTheme.grey, fontSize: 16)),
@@ -188,9 +196,6 @@ class _ServeScreenState extends State<ServeScreen> {
     final opponentColor = Color(currentMatch.opponentColorValue);
     final records = provider.getServeRecordsByMatch(matchId);
 
-    // 列ヘッダー
-    final headers = ServeResult.values;
-
     return Column(
       children: [
         // グリッドヘッダー行
@@ -199,12 +204,11 @@ class _ServeScreenState extends State<ServeScreen> {
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Row(
             children: [
-              // 選手名列ヘッダー
               SizedBox(
                 width: 80,
-                child: Text(
+                child: const Text(
                   '選手',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.gold,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -212,10 +216,17 @@ class _ServeScreenState extends State<ServeScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
-              ...headers.map((h) => Expanded(
-                    child: _headerCell(h),
-                  )),
-              const SizedBox(width: 36), // 取り消しボタン用スペース
+              ...ServeResult.values.map((h) =>
+                  Expanded(child: _headerCell(h))),
+              // 戻るボタン列ヘッダー
+              const SizedBox(
+                width: 40,
+                child: Text(
+                  '戻す',
+                  style: TextStyle(color: AppTheme.grey, fontSize: 9),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ],
           ),
         ),
@@ -230,7 +241,6 @@ class _ServeScreenState extends State<ServeScreen> {
               final player = players[index];
               final playerRecords =
                   records.where((r) => r.playerId == player.id).toList();
-
               return _buildPlayerRow(
                   context, provider, player, matchId, playerRecords, opponentColor);
             },
@@ -266,7 +276,8 @@ class _ServeScreenState extends State<ServeScreen> {
           const SizedBox(height: 2),
           Text(
             result.shortLabel,
-            style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+            style:
+                TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
         ],
@@ -282,96 +293,278 @@ class _ServeScreenState extends State<ServeScreen> {
     List<ServeRecord> playerRecords,
     Color opponentColor,
   ) {
+    final isHighlighted = _highlightedPlayerIds.contains(player.id as String);
+    final isUndoOpen = _undoMenuPlayerId == player.id;
+
     Map<ServeResult, int> counts = {};
     for (final r in ServeResult.values) {
       counts[r] = playerRecords.where((rec) => rec.result == r).length;
     }
     final total = playerRecords.length;
 
-    return Container(
-      color: _lastUndoPlayerId == player.id
-          ? AppTheme.primaryRed.withValues(alpha: 0.05)
-          : Colors.transparent,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        child: Row(
-          children: [
-            // 選手名
-            SizedBox(
-              width: 80,
-              child: Column(
-                children: [
-                  Text(
-                    player.name,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (total > 0)
-                    Text(
-                      '$total本',
-                      style: const TextStyle(color: AppTheme.grey, fontSize: 10),
-                    ),
-                ],
-              ),
-            ),
-            // 各結果ボタン
-            ...ServeResult.values.map((result) {
-              final count = counts[result] ?? 0;
-              return Expanded(
-                child: _countButton(
-                  count: count,
-                  result: result,
-                  onTap: () async {
-                    await provider.addServeRecord(
-                      matchId: matchId,
-                      playerId: player.id,
-                      result: result,
-                    );
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        // 選手ハイライト：タップで光る
+        color: isHighlighted
+            ? AppTheme.primaryRed.withValues(alpha: 0.18)
+            : Colors.transparent,
+        border: isHighlighted
+            ? const Border(
+                left: BorderSide(color: AppTheme.primaryRed, width: 3),
+              )
+            : null,
+        boxShadow: isHighlighted
+            ? [
+                BoxShadow(
+                  color: AppTheme.primaryRed.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                )
+              ]
+            : null,
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+            child: Row(
+              children: [
+                // 選手名（タップでハイライトON/OFF）
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (_highlightedPlayerIds.contains(player.id as String)) {
+                        _highlightedPlayerIds.remove(player.id as String);
+                      } else {
+                        _highlightedPlayerIds.add(player.id as String);
+                      }
+                    });
                   },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 80,
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: isHighlighted
+                          ? AppTheme.primaryRed.withValues(alpha: 0.25)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                      border: isHighlighted
+                          ? Border.all(
+                              color: AppTheme.primaryRed.withValues(alpha: 0.6),
+                              width: 1.5,
+                            )
+                          : null,
+                    ),
+                    child: Column(
+                      children: [
+                        if (isHighlighted)
+                          Icon(Icons.star,
+                              color: AppTheme.gold, size: 10),
+                        Text(
+                          player.name,
+                          style: TextStyle(
+                            color: isHighlighted ? Colors.white : Colors.white,
+                            fontSize: 13,
+                            fontWeight: isHighlighted
+                                ? FontWeight.bold
+                                : FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (total > 0)
+                          Text(
+                            '$total本',
+                            style: TextStyle(
+                              color: isHighlighted
+                                  ? AppTheme.gold
+                                  : AppTheme.grey,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // 各結果ボタン
+                ...ServeResult.values.map((result) {
+                  final count = counts[result] ?? 0;
+                  return Expanded(
+                    child: _countButton(
+                      count: count,
+                      result: result,
+                      onTap: () async {
+                        await provider.addServeRecord(
+                          matchId: matchId,
+                          playerId: player.id,
+                          result: result,
+                        );
+                      },
+                    ),
+                  );
+                }),
+                // 戻るボタン（タップでメニュー展開）
+                SizedBox(
+                  width: 40,
+                  child: GestureDetector(
+                    onTap: total > 0
+                        ? () {
+                            setState(() {
+                              _undoMenuPlayerId =
+                                  isUndoOpen ? null : player.id as String;
+                            });
+                          }
+                        : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.all(3),
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: isUndoOpen
+                            ? AppTheme.primaryRed.withValues(alpha: 0.2)
+                            : total > 0
+                                ? AppTheme.cardBg2
+                                : AppTheme.cardBg2.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isUndoOpen
+                              ? AppTheme.primaryRed.withValues(alpha: 0.6)
+                              : total > 0
+                                  ? const Color(0xFF555555)
+                                  : const Color(0xFF333333),
+                        ),
+                      ),
+                      child: Icon(
+                        isUndoOpen ? Icons.close : Icons.undo,
+                        color: isUndoOpen
+                            ? AppTheme.primaryRed
+                            : total > 0
+                                ? AppTheme.lightGrey
+                                : AppTheme.grey.withValues(alpha: 0.3),
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 結果別取り消しメニュー（展開時のみ表示）
+          if (isUndoOpen)
+            _buildUndoMenu(context, provider, player, matchId, playerRecords, counts),
+        ],
+      ),
+    );
+  }
+
+  // 結果別取り消しメニュー
+  Widget _buildUndoMenu(
+    BuildContext context,
+    AppProvider provider,
+    dynamic player,
+    String matchId,
+    List<ServeRecord> playerRecords,
+    Map<ServeResult, int> counts,
+  ) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A0000),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.primaryRed.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              '取り消す結果を選択：',
+              style: TextStyle(color: AppTheme.lightGrey, fontSize: 11),
+            ),
+          ),
+          Row(
+            children: ServeResult.values.map((result) {
+              final count = counts[result] ?? 0;
+              Color color;
+              switch (result) {
+                case ServeResult.ace:
+                  color = AppTheme.aceColor;
+                case ServeResult.under:
+                  color = AppTheme.underColor;
+                case ServeResult.justIn:
+                  color = AppTheme.justInColor;
+                case ServeResult.miss:
+                  color = AppTheme.missColor;
+              }
+              return Expanded(
+                child: GestureDetector(
+                  onTap: count > 0
+                      ? () async {
+                          // 指定した結果の最新1件を取り消し
+                          final toDelete = playerRecords
+                              .where((r) => r.result == result)
+                              .toList()
+                            ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+                          if (toDelete.isNotEmpty) {
+                            await provider.deleteServeRecord(toDelete.first.id);
+                          }
+                          setState(() {
+                            _undoMenuPlayerId = null;
+                          });
+                        }
+                      : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: count > 0
+                          ? color.withValues(alpha: 0.2)
+                          : AppTheme.cardBg2.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: count > 0
+                            ? color.withValues(alpha: 0.7)
+                            : const Color(0xFF333333),
+                        width: count > 0 ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          count > 0 ? '-1' : '－',
+                          style: TextStyle(
+                            color: count > 0 ? color : AppTheme.grey,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          result.shortLabel,
+                          style: TextStyle(
+                            color: count > 0 ? color : AppTheme.grey,
+                            fontSize: 9,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (count > 0)
+                          Text(
+                            '($count)',
+                            style: TextStyle(color: color, fontSize: 9),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               );
-            }),
-            // 取り消しボタン
-            SizedBox(
-              width: 36,
-              child: GestureDetector(
-                onTap: total > 0
-                    ? () async {
-                        setState(() => _lastUndoPlayerId = player.id);
-                        await provider.undoLastServeRecord(matchId, player.id);
-                        Future.delayed(const Duration(milliseconds: 500),
-                            () => setState(() => _lastUndoPlayerId = null));
-                      }
-                    : null,
-                child: Container(
-                  margin: const EdgeInsets.all(4),
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: total > 0
-                        ? AppTheme.cardBg2
-                        : AppTheme.cardBg2.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: total > 0
-                          ? const Color(0xFF555555)
-                          : const Color(0xFF333333),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.undo,
-                    color: total > 0 ? AppTheme.lightGrey : AppTheme.grey.withValues(alpha: 0.3),
-                    size: 16,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
@@ -417,7 +610,8 @@ class _ServeScreenState extends State<ServeScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: borderColor, width: 1.5),
           boxShadow: count > 0
-              ? [BoxShadow(color: borderColor.withValues(alpha: 0.3), blurRadius: 4)]
+              ? [BoxShadow(
+                  color: borderColor.withValues(alpha: 0.3), blurRadius: 4)]
               : null,
         ),
         child: Center(
@@ -456,19 +650,26 @@ class _ServeScreenState extends State<ServeScreen> {
                         fontSize: 12,
                         fontWeight: FontWeight.bold)),
                 Text('$grandTotal本',
-                    style: const TextStyle(color: AppTheme.grey, fontSize: 10)),
+                    style:
+                        const TextStyle(color: AppTheme.grey, fontSize: 10)),
               ],
             ),
           ),
           ...ServeResult.values.map((r) {
             final count = totals[r] ?? 0;
-            final pct = grandTotal > 0 ? (count / grandTotal * 100).toStringAsFixed(0) : '0';
+            final pct = grandTotal > 0
+                ? (count / grandTotal * 100).toStringAsFixed(0)
+                : '0';
             Color color;
             switch (r) {
-              case ServeResult.ace: color = AppTheme.aceColor;
-              case ServeResult.under: color = AppTheme.underColor;
-              case ServeResult.justIn: color = AppTheme.justInColor;
-              case ServeResult.miss: color = AppTheme.missColor;
+              case ServeResult.ace:
+                color = AppTheme.aceColor;
+              case ServeResult.under:
+                color = AppTheme.underColor;
+              case ServeResult.justIn:
+                color = AppTheme.justInColor;
+              case ServeResult.miss:
+                color = AppTheme.missColor;
             }
             return Expanded(
               child: Column(
@@ -476,9 +677,7 @@ class _ServeScreenState extends State<ServeScreen> {
                   Text(
                     '$count',
                     style: TextStyle(
-                        color: color,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold),
+                        color: color, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   Text(
                     '$pct%',
@@ -488,7 +687,7 @@ class _ServeScreenState extends State<ServeScreen> {
               ),
             );
           }),
-          const SizedBox(width: 36),
+          const SizedBox(width: 40),
         ],
       ),
     );

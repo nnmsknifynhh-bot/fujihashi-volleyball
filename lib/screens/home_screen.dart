@@ -550,13 +550,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     AppProvider provider,
   ) async {
     final ourControllers = List.generate(
-      10,
+      15,
       (i) => TextEditingController(
         text: match.sets[i].isPlayed ? '${match.sets[i].ourScore}' : '',
       ),
     );
     final theirControllers = List.generate(
-      10,
+      15,
       (i) => TextEditingController(
         text: match.sets[i].isPlayed ? '${match.sets[i].theirScore}' : '',
       ),
@@ -654,7 +654,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: Column(
-                  children: List.generate(10, (i) {
+                  children: List.generate(15, (i) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 3),
                       child: Row(
@@ -740,7 +740,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             const EdgeInsets.symmetric(vertical: 12),
                       ),
                       onPressed: () async {
-                        for (int i = 0; i < 10; i++) {
+                        for (int i = 0; i < 15; i++) {
                           final our =
                               int.tryParse(ourControllers[i].text) ?? 0;
                           final their =

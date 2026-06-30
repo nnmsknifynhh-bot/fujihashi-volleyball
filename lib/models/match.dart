@@ -26,7 +26,7 @@ class Match {
   String matchName;
   String memo;
   int opponentColorValue;
-  List<SetScore> sets; // 最大10セット
+  List<SetScore> sets; // 最大15セット
 
   Match({
     required this.id,
@@ -37,7 +37,7 @@ class Match {
     this.memo = '',
     this.opponentColorValue = 0xFF2196F3,
     List<SetScore>? sets,
-  }) : sets = sets ?? List.generate(10, (_) => SetScore());
+  }) : sets = sets ?? List.generate(15, (_) => SetScore());
 
   // 勝利セット数
   int get ourWonSets =>
@@ -69,12 +69,12 @@ class Match {
     if (json['sets'] != null) {
       final rawSets = json['sets'] as List<dynamic>;
       sets = rawSets.map((s) => SetScore.fromJson(s)).toList();
-      // 10セット分に足りなければ補完
-      while (sets.length < 10) {
+      // 15セット分に足りなければ補完
+      while (sets.length < 15) {
         sets.add(SetScore());
       }
     } else {
-      sets = List.generate(10, (_) => SetScore());
+      sets = List.generate(15, (_) => SetScore());
     }
     return Match(
       id: json['id'],
