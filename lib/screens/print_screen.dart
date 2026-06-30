@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -258,10 +262,26 @@ class _PrintScreenState extends State<PrintScreen> {
 
     try {
       final pdf = await _buildPdf(provider);
-      await Printing.layoutPdf(
-        onLayout: (_) => pdf.save(),
-        name: 'volleyball_report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      final bytes = await pdf.save();
+      // Web: Blobを使って直接ダウンロード（Printing.layoutPdfのASCII制限を回避）
+      final blob = web.Blob(
+        [bytes.toJS].toJS,
+        web.BlobPropertyBag(type: 'application/pdf'),
       );
+      final url = web.URL.createObjectURL(blob);
+      final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+      anchor.href = url;
+      anchor.download = 'volleyball_report_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+      anchor.click();
+      web.URL.revokeObjectURL(url);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PDFをダウンロードしました'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e, stack) {
       if (mounted) {
         // エラー詳細をダイアログで表示
