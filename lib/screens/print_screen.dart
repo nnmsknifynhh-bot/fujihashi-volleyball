@@ -39,11 +39,15 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclPercentage = true;       // 割合（%）表示
   bool _inclOpponentAnalysis = true; // 対戦相手別分析
 
-  // 対戦相手別分析の選択状態
-  String? _selectedOpponent;
+  // 対戦相手別分析の選択状態（複数選択対応・空=全対戦相手）
+  Set<String> _selectedOpponents = {};
 
   bool _isGenerating = false;
   String _statusMessage = '';
+
+  // フォントをフィールドに保持（全pw.TextStyleで明示的に使用）
+  pw.Font? _regularFont;
+  pw.Font? _boldFont;
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +129,7 @@ class _PrintScreenState extends State<PrintScreen> {
                   _inclOpponentAnalysis,
                   (v) => setState(() {
                     _inclOpponentAnalysis = v;
-                    if (!v) _selectedOpponent = null;
+                    if (!v) _selectedOpponents = {};
                   }),
                 ),
 
@@ -153,11 +157,13 @@ class _PrintScreenState extends State<PrintScreen> {
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8, bottom: 4),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8, bottom: 4),
                                 child: Text(
-                                  '対戦相手を選択（未選択=全対戦相手）',
-                                  style: TextStyle(
+                                  _selectedOpponents.isEmpty
+                                      ? '対戦相手を選択（複数選択可・未選択=全対戦相手）'
+                                      : '${_selectedOpponents.length}件選択中（タップで選択/解除）',
+                                  style: const TextStyle(
                                       color: AppTheme.gold,
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold),
@@ -324,13 +330,25 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  /// 対戦相手選択チップ
+  /// 対戦相手選択チップ（複数選択対応）
   Widget _opponentChip(String? opponent, List<String> allOpponents) {
-    final isSelected = opponent == _selectedOpponent;
+    // nullは「全対戦相手」ボタン（全選択解除）
+    final isAllButton = opponent == null;
+    final isSelected = isAllButton
+        ? _selectedOpponents.isEmpty
+        : _selectedOpponents.contains(opponent);
     final label = opponent ?? '全対戦相手';
     return GestureDetector(
       onTap: () => setState(() {
-        _selectedOpponent = isSelected ? null : opponent;
+        if (isAllButton) {
+          _selectedOpponents = {};
+        } else {
+          if (_selectedOpponents.contains(opponent)) {
+            _selectedOpponents = Set.from(_selectedOpponents)..remove(opponent);
+          } else {
+            _selectedOpponents = Set.from(_selectedOpponents)..add(opponent);
+          }
+        }
       }),
       child: Container(
         padding:
@@ -388,30 +406,21 @@ class _PrintScreenState extends State<PrintScreen> {
     try {
       await Future.delayed(Duration.zero);
 
-      // ── Step 1: フォント読み込み ──
-      pw.Font regularFont;
-      pw.Font boldFont;
-      try {
-        final reg =
-            await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
-        await Future.delayed(Duration.zero);
-        regularFont = pw.Font.ttf(reg);
-        await Future.delayed(Duration.zero);
-        final bld =
-            await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
-        await Future.delayed(Duration.zero);
-        boldFont = pw.Font.ttf(bld);
-        await Future.delayed(Duration.zero);
-      } catch (_) {
-        regularFont = pw.Font.helvetica();
-        boldFont = pw.Font.helveticaBold();
-      }
+      // ── Step 1: フォント読み込み（失敗時はエラーとして停止） ──
+      final reg = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
+      await Future.delayed(Duration.zero);
+      _regularFont = pw.Font.ttf(reg);
+      await Future.delayed(Duration.zero);
+      final bld = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+      await Future.delayed(Duration.zero);
+      _boldFont = pw.Font.ttf(bld);
+      await Future.delayed(Duration.zero);
 
       final theme = pw.ThemeData.withFont(
-        base: regularFont,
-        bold: boldFont,
-        italic: regularFont,
-        boldItalic: boldFont,
+        base: _regularFont!,
+        bold: _boldFont!,
+        italic: _regularFont!,
+        boldItalic: _boldFont!,
       );
 
       final now = DateTime.now();
@@ -558,9 +567,9 @@ class _PrintScreenState extends State<PrintScreen> {
 
     final allMatches = provider.matches;
 
-    // 対戦相手フィルター適用
-    final filteredMatches = _selectedOpponent != null
-        ? allMatches.where((m) => m.opponent == _selectedOpponent).toList()
+    // 対戦相手フィルター適用（複数選択対応・空=全対戦相手）
+    final filteredMatches = _selectedOpponents.isNotEmpty
+        ? allMatches.where((m) => _selectedOpponents.contains(m.opponent)).toList()
         : allMatches;
 
     // サーブ統計（全試合分）
@@ -690,7 +699,7 @@ class _PrintScreenState extends State<PrintScreen> {
       matchRecv: matchRecv,
       opponentServe: opponentServe,
       opponentRecv: opponentRecv,
-      selectedOpponent: _selectedOpponent,
+      selectedOpponents: _selectedOpponents,
     );
   }
 
@@ -809,17 +818,22 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text('藤橋JVC男子 バレーボール分析レポート',
                   style: pw.TextStyle(
+                      font: _boldFont,
                       fontSize: 15,
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.red900)),
               pw.Text('この一本、この一点',
-                  style:
-                      pw.TextStyle(fontSize: 9, color: PdfColors.amber800)),
+                  style: pw.TextStyle(
+                      font: _regularFont,
+                      fontSize: 9,
+                      color: PdfColors.amber800)),
             ],
           ),
           pw.Text(dateStr,
-              style:
-                  const pw.TextStyle(fontSize: 9, color: PdfColors.grey)),
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  fontSize: 9,
+                  color: PdfColors.grey)),
         ],
       ),
     );
@@ -835,11 +849,15 @@ class _PrintScreenState extends State<PrintScreen> {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text('藤橋JVC男子 バレーボール分析アプリ',
-              style:
-                  const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  fontSize: 7,
+                  color: PdfColors.grey)),
           pw.Text('- $pageNum -',
-              style:
-                  const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  fontSize: 7,
+                  color: PdfColors.grey)),
         ],
       ),
     );
@@ -856,6 +874,7 @@ class _PrintScreenState extends State<PrintScreen> {
       ),
       child: pw.Text(title,
           style: pw.TextStyle(
+              font: _boldFont,
               fontSize: 12,
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.red900)),
@@ -866,6 +885,7 @@ class _PrintScreenState extends State<PrintScreen> {
         padding: const pw.EdgeInsets.all(4),
         child: pw.Text(t,
             style: pw.TextStyle(
+                font: _boldFont,
                 fontSize: 8,
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white),
@@ -876,6 +896,7 @@ class _PrintScreenState extends State<PrintScreen> {
         padding: const pw.EdgeInsets.all(4),
         child: pw.Text(t,
             style: pw.TextStyle(
+                font: highlight ? _boldFont : _regularFont,
                 fontSize: 8,
                 color:
                     highlight ? PdfColors.red900 : PdfColors.black,
@@ -897,8 +918,10 @@ class _PrintScreenState extends State<PrintScreen> {
         children: [
           _sectionTitle('選手別成績'),
           pw.Text('選手データがありません。',
-              style: const pw.TextStyle(
-                  color: PdfColors.grey, fontSize: 10)),
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  color: PdfColors.grey,
+                  fontSize: 10)),
         ],
       );
     }
@@ -967,8 +990,8 @@ class _PrintScreenState extends State<PrintScreen> {
     final serveEffCount = serveEffRanked.length;
     final serveMissCount = serveMissRanked.length;
 
-    // ランキングバッジウィジェット
-    pw.Widget rankBadge(String label, int rank, int count, String valueStr) {
+    // ランキングバッジウィジェット（\n禁止のためlabel2を別引数に）
+    pw.Widget rankBadge(String label, String label2, int rank, int count, String valueStr) {
       if (rank < 0 || count == 0) {
         return pw.Container(
           padding: const pw.EdgeInsets.all(8),
@@ -980,11 +1003,23 @@ class _PrintScreenState extends State<PrintScreen> {
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
               pw.Text(label,
-                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+                  style: pw.TextStyle(
+                      font: _regularFont,
+                      fontSize: 8,
+                      color: PdfColors.grey),
+                  textAlign: pw.TextAlign.center),
+              pw.Text(label2,
+                  style: pw.TextStyle(
+                      font: _regularFont,
+                      fontSize: 7,
+                      color: PdfColors.grey),
                   textAlign: pw.TextAlign.center),
               pw.SizedBox(height: 4),
               pw.Text('データなし',
-                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey),
+                  style: pw.TextStyle(
+                      font: _regularFont,
+                      fontSize: 9,
+                      color: PdfColors.grey),
                   textAlign: pw.TextAlign.center),
             ],
           ),
@@ -1010,9 +1045,16 @@ class _PrintScreenState extends State<PrintScreen> {
           children: [
             pw.Text(label,
                 style: pw.TextStyle(
+                    font: _boldFont,
                     fontSize: 7.5,
                     fontWeight: pw.FontWeight.bold,
                     color: PdfColors.grey700),
+                textAlign: pw.TextAlign.center),
+            pw.Text(label2,
+                style: pw.TextStyle(
+                    font: _regularFont,
+                    fontSize: 6.5,
+                    color: PdfColors.grey500),
                 textAlign: pw.TextAlign.center),
             pw.SizedBox(height: 6),
             pw.Container(
@@ -1026,6 +1068,7 @@ class _PrintScreenState extends State<PrintScreen> {
                 child: pw.Text(
                   '$rankNum位',
                   style: pw.TextStyle(
+                      font: _boldFont,
                       fontSize: 11,
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.white),
@@ -1035,12 +1078,15 @@ class _PrintScreenState extends State<PrintScreen> {
             ),
             pw.SizedBox(height: 4),
             pw.Text('$count人中',
-                style: const pw.TextStyle(
-                    fontSize: 7, color: PdfColors.grey600),
+                style: pw.TextStyle(
+                    font: _regularFont,
+                    fontSize: 7,
+                    color: PdfColors.grey600),
                 textAlign: pw.TextAlign.center),
             pw.SizedBox(height: 2),
             pw.Text(valueStr,
                 style: pw.TextStyle(
+                    font: _boldFont,
                     fontSize: 7.5,
                     color: badgeColor,
                     fontWeight: pw.FontWeight.bold),
@@ -1071,6 +1117,7 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Text(
                 player.number.isNotEmpty ? '#${player.number}  ' : '',
                 style: pw.TextStyle(
+                    font: _boldFont,
                     fontSize: 10,
                     color: PdfColors.amber200,
                     fontWeight: pw.FontWeight.bold),
@@ -1078,6 +1125,7 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Text(
                 player.name,
                 style: pw.TextStyle(
+                    font: _boldFont,
                     fontSize: 13,
                     fontWeight: pw.FontWeight.bold,
                     color: PdfColors.white),
@@ -1085,8 +1133,10 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Spacer(),
               pw.Text(
                 '${player.team}チーム  個人成績レポート',
-                style: const pw.TextStyle(
-                    fontSize: 9, color: PdfColors.amber100),
+                style: pw.TextStyle(
+                    font: _regularFont,
+                    fontSize: 9,
+                    color: PdfColors.amber100),
               ),
             ],
           ),
@@ -1169,7 +1219,8 @@ class _PrintScreenState extends State<PrintScreen> {
           children: [
             pw.Expanded(
               child: rankBadge(
-                'サーブ効率\n(エース-ミス)',
+                'サーブ効率',
+                'エース-ミス',
                 serveEffRank,
                 serveEffCount,
                 'スコア: $serveEff',
@@ -1178,7 +1229,8 @@ class _PrintScreenState extends State<PrintScreen> {
             pw.SizedBox(width: 8),
             pw.Expanded(
               child: rankBadge(
-                'サービスミス率\n(低い順が優秀)',
+                'サービスミス率',
+                '低い順が優秀',
                 serveMissRank,
                 serveMissCount,
                 'ミス率: $serveMissPct',
@@ -1187,7 +1239,8 @@ class _PrintScreenState extends State<PrintScreen> {
             pw.SizedBox(width: 8),
             pw.Expanded(
               child: rankBadge(
-                'サーブレシーブ率\n(オーバー率)',
+                'サーブレシーブ率',
+                'オーバー率',
                 recvRank,
                 recvCount,
                 'オーバー率: $recvPct',
@@ -1198,7 +1251,7 @@ class _PrintScreenState extends State<PrintScreen> {
 
         pw.SizedBox(height: 10),
 
-        // AI講評
+        // AI講評（\n禁止のため段落ごとに分割して表示）
         pw.Container(
           padding: const pw.EdgeInsets.all(8),
           decoration: pw.BoxDecoration(
@@ -1212,15 +1265,22 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text('AI講評',
                   style: pw.TextStyle(
+                      font: _boldFont,
                       fontSize: 9,
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.amber900)),
               pw.SizedBox(height: 4),
-              pw.Text(
-                aiComment,
-                style: const pw.TextStyle(
-                    fontSize: 8.5, color: PdfColors.grey800),
-              ),
+              // 改行で分割して段落ごとにTextウィジェット化
+              ...aiComment.split('\n\n').where((p) => p.trim().isNotEmpty).expand((para) => [
+                pw.Text(
+                  para.trim(),
+                  style: pw.TextStyle(
+                      font: _regularFont,
+                      fontSize: 8.5,
+                      color: PdfColors.grey800),
+                ),
+                pw.SizedBox(height: 3),
+              ]),
             ],
           ),
         ),
@@ -1247,8 +1307,10 @@ class _PrintScreenState extends State<PrintScreen> {
         _sectionTitle('サーブランキング（エース率順）'),
         if (ranked.isEmpty)
           pw.Text('データなし',
-              style: const pw.TextStyle(
-                  color: PdfColors.grey, fontSize: 10))
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  color: PdfColors.grey,
+                  fontSize: 10))
         else
           pw.Table(
             border: pw.TableBorder.all(
@@ -1322,8 +1384,10 @@ class _PrintScreenState extends State<PrintScreen> {
         _sectionTitle('サーブレシーブランキング（オーバー率順）'),
         if (ranked.isEmpty)
           pw.Text('データなし',
-              style: const pw.TextStyle(
-                  color: PdfColors.grey, fontSize: 10))
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  color: PdfColors.grey,
+                  fontSize: 10))
         else
           pw.Table(
             border: pw.TableBorder.all(
@@ -1380,8 +1444,11 @@ class _PrintScreenState extends State<PrintScreen> {
 
   // ── 対戦相手別分析ページ ────────────────────────────────────────
   pw.Widget _buildOpponentPage(_PdfData data, AppProvider provider) {
-    final opponents = data.opponentServe.keys.toList()..sort();
-    final targetLabel = data.selectedOpponent ?? '全対戦相手';
+    final allOpponents = data.opponentServe.keys.toList()..sort();
+    // 複数選択対応
+    final hasFilter = data.selectedOpponents.isNotEmpty;
+    final selectedSorted = data.selectedOpponents.toList()..sort();
+    final targetLabel = hasFilter ? selectedSorted.join(', ') : '全対戦相手';
 
     if (data.filteredMatches.isEmpty) {
       return pw.Column(
@@ -1389,15 +1456,16 @@ class _PrintScreenState extends State<PrintScreen> {
         children: [
           _sectionTitle('対戦相手別分析（$targetLabel）'),
           pw.Text('試合データがありません。',
-              style: const pw.TextStyle(
-                  color: PdfColors.grey, fontSize: 10)),
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  color: PdfColors.grey,
+                  fontSize: 10)),
         ],
       );
     }
 
-    // 表示する対戦相手一覧
-    final displayOpponents =
-        data.selectedOpponent != null ? [data.selectedOpponent!] : opponents;
+    // 表示する対戦相手一覧（複数選択対応）
+    final displayOpponents = hasFilter ? selectedSorted : allOpponents;
 
     final List<pw.Widget> tables = [];
     for (final opp in displayOpponents) {
@@ -1423,6 +1491,7 @@ class _PrintScreenState extends State<PrintScreen> {
             child: pw.Text(
               '対戦相手: $opp  （$matchCount試合）',
               style: pw.TextStyle(
+                  font: _boldFont,
                   fontSize: 10,
                   fontWeight: pw.FontWeight.bold,
                   color: PdfColors.red900),
@@ -1495,8 +1564,10 @@ class _PrintScreenState extends State<PrintScreen> {
         _sectionTitle('対戦相手別分析（$targetLabel）'),
         if (tables.isEmpty)
           pw.Text('対戦相手データなし',
-              style: const pw.TextStyle(
-                  color: PdfColors.grey, fontSize: 10))
+              style: pw.TextStyle(
+                  font: _regularFont,
+                  color: PdfColors.grey,
+                  fontSize: 10))
         else
           ...tables,
       ],
@@ -1541,7 +1612,7 @@ class _PdfData {
   // 対戦相手別：opponent -> playerId -> stats
   final Map<String, Map<String, _ServeStats>> opponentServe;
   final Map<String, Map<String, _RecvStats>> opponentRecv;
-  final String? selectedOpponent;
+  final Set<String> selectedOpponents; // 空=全対戦相手
 
   const _PdfData({
     required this.players,
@@ -1553,7 +1624,7 @@ class _PdfData {
     required this.matchRecv,
     required this.opponentServe,
     required this.opponentRecv,
-    required this.selectedOpponent,
+    required this.selectedOpponents,
   });
 }
 
