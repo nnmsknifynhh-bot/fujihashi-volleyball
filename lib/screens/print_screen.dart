@@ -820,7 +820,6 @@ class _PrintScreenState extends State<PrintScreen> {
                   style: pw.TextStyle(
                       font: _boldFont,
                       fontSize: 15,
-                      fontWeight: pw.FontWeight.bold,
                       color: PdfColors.red900)),
               pw.Text('この一本、この一点',
                   style: pw.TextStyle(
@@ -876,7 +875,6 @@ class _PrintScreenState extends State<PrintScreen> {
           style: pw.TextStyle(
               font: _boldFont,
               fontSize: 12,
-              fontWeight: pw.FontWeight.bold,
               color: PdfColors.red900)),
     );
   }
@@ -887,7 +885,6 @@ class _PrintScreenState extends State<PrintScreen> {
             style: pw.TextStyle(
                 font: _boldFont,
                 fontSize: 8,
-                fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white),
             textAlign: pw.TextAlign.center),
       );
@@ -899,10 +896,7 @@ class _PrintScreenState extends State<PrintScreen> {
                 font: highlight ? _boldFont : _regularFont,
                 fontSize: 8,
                 color:
-                    highlight ? PdfColors.red900 : PdfColors.black,
-                fontWeight: highlight
-                    ? pw.FontWeight.bold
-                    : pw.FontWeight.normal),
+                    highlight ? PdfColors.red900 : PdfColors.black),
             textAlign: pw.TextAlign.center),
       );
 
@@ -1047,7 +1041,6 @@ class _PrintScreenState extends State<PrintScreen> {
                 style: pw.TextStyle(
                     font: _boldFont,
                     fontSize: 7.5,
-                    fontWeight: pw.FontWeight.bold,
                     color: PdfColors.grey700),
                 textAlign: pw.TextAlign.center),
             pw.Text(label2,
@@ -1070,7 +1063,6 @@ class _PrintScreenState extends State<PrintScreen> {
                   style: pw.TextStyle(
                       font: _boldFont,
                       fontSize: 11,
-                      fontWeight: pw.FontWeight.bold,
                       color: PdfColors.white),
                   textAlign: pw.TextAlign.center,
                 ),
@@ -1088,8 +1080,7 @@ class _PrintScreenState extends State<PrintScreen> {
                 style: pw.TextStyle(
                     font: _boldFont,
                     fontSize: 7.5,
-                    color: badgeColor,
-                    fontWeight: pw.FontWeight.bold),
+                    color: badgeColor),
                 textAlign: pw.TextAlign.center),
           ],
         ),
@@ -1119,15 +1110,13 @@ class _PrintScreenState extends State<PrintScreen> {
                 style: pw.TextStyle(
                     font: _boldFont,
                     fontSize: 10,
-                    color: PdfColors.amber200,
-                    fontWeight: pw.FontWeight.bold),
+                    color: PdfColors.amber200),
               ),
               pw.Text(
                 player.name,
                 style: pw.TextStyle(
                     font: _boldFont,
                     fontSize: 13,
-                    fontWeight: pw.FontWeight.bold,
                     color: PdfColors.white),
               ),
               pw.Spacer(),
@@ -1267,7 +1256,6 @@ class _PrintScreenState extends State<PrintScreen> {
                   style: pw.TextStyle(
                       font: _boldFont,
                       fontSize: 9,
-                      fontWeight: pw.FontWeight.bold,
                       color: PdfColors.amber900)),
               pw.SizedBox(height: 4),
               // 改行で分割して段落ごとにTextウィジェット化
@@ -1493,7 +1481,6 @@ class _PrintScreenState extends State<PrintScreen> {
               style: pw.TextStyle(
                   font: _boldFont,
                   fontSize: 10,
-                  fontWeight: pw.FontWeight.bold,
                   color: PdfColors.red900),
             ),
           ),
