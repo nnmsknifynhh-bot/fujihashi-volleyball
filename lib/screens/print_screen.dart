@@ -59,69 +59,33 @@ class _PrintScreenState extends State<PrintScreen> {
               children: [
                 _buildSectionHeader('出力内容を選択', Icons.checklist),
                 const SizedBox(height: 12),
-                _buildCheckTile(
-                  '試合別結果',
-                  '各試合のサーブ・レシーブ記録',
-                  Icons.sports_volleyball,
-                  _inclMatchResult,
-                  (v) => setState(() => _inclMatchResult = v),
-                ),
-                _buildCheckTile(
-                  '選手別成績',
-                  '選手ごとの全集計データ',
-                  Icons.person,
-                  _inclPlayerStats,
-                  (v) => setState(() => _inclPlayerStats = v),
-                ),
-                _buildCheckTile(
-                  'サーブランキング',
-                  'エース率・崩し率・ミス率順位',
-                  Icons.military_tech,
-                  _inclServeRanking,
-                  (v) => setState(() => _inclServeRanking = v),
-                ),
-                _buildCheckTile(
-                  'サーブレシーブランキング',
-                  'オーバー率・ミス率順位',
-                  Icons.leaderboard,
-                  _inclReceiveRanking,
-                  (v) => setState(() => _inclReceiveRanking = v),
-                ),
-                _buildCheckTile(
-                  '割合（%）表示',
-                  '各項目のパーセンテージ',
-                  Icons.percent,
-                  _inclPercentage,
-                  (v) => setState(() => _inclPercentage = v),
-                ),
-                _buildCheckTile(
-                  'AI講評',
-                  '各選手のAI自動分析コメント',
-                  Icons.psychology,
-                  _inclAiComment,
-                  (v) => setState(() => _inclAiComment = v),
-                ),
-                _buildCheckTile(
-                  '対戦相手別分析',
-                  '相手チームごとの成績比較',
-                  Icons.groups,
-                  _inclOpponentAnalysis,
-                  (v) => setState(() => _inclOpponentAnalysis = v),
-                ),
-                _buildCheckTile(
-                  '期間集計',
-                  '選択した期間の集計データ',
-                  Icons.date_range,
-                  _inclPeriodSummary,
-                  (v) => setState(() => _inclPeriodSummary = v),
-                ),
-                _buildCheckTile(
-                  'A/Bチーム比較',
-                  'チーム間の成績比較',
-                  Icons.compare_arrows,
-                  _inclTeamComparison,
-                  (v) => setState(() => _inclTeamComparison = v),
-                ),
+                _buildCheckTile('試合別結果', '各試合のサーブ・レシーブ記録',
+                    Icons.sports_volleyball, _inclMatchResult,
+                    (v) => setState(() => _inclMatchResult = v)),
+                _buildCheckTile('選手別成績', '選手ごとの全集計データ',
+                    Icons.person, _inclPlayerStats,
+                    (v) => setState(() => _inclPlayerStats = v)),
+                _buildCheckTile('サーブランキング', 'エース率・崩し率・ミス率順位',
+                    Icons.military_tech, _inclServeRanking,
+                    (v) => setState(() => _inclServeRanking = v)),
+                _buildCheckTile('サーブレシーブランキング', 'オーバー率・ミス率順位',
+                    Icons.leaderboard, _inclReceiveRanking,
+                    (v) => setState(() => _inclReceiveRanking = v)),
+                _buildCheckTile('割合（%）表示', '各項目のパーセンテージ',
+                    Icons.percent, _inclPercentage,
+                    (v) => setState(() => _inclPercentage = v)),
+                _buildCheckTile('AI講評', '各選手のAI自動分析コメント',
+                    Icons.psychology, _inclAiComment,
+                    (v) => setState(() => _inclAiComment = v)),
+                _buildCheckTile('対戦相手別分析', '相手チームごとの成績比較',
+                    Icons.groups, _inclOpponentAnalysis,
+                    (v) => setState(() => _inclOpponentAnalysis = v)),
+                _buildCheckTile('期間集計', '選択した期間の集計データ',
+                    Icons.date_range, _inclPeriodSummary,
+                    (v) => setState(() => _inclPeriodSummary = v)),
+                _buildCheckTile('A/Bチーム比較', 'チーム間の成績比較',
+                    Icons.compare_arrows, _inclTeamComparison,
+                    (v) => setState(() => _inclTeamComparison = v)),
                 const SizedBox(height: 20),
                 _buildSectionHeader('出力形式', Icons.picture_as_pdf),
                 const SizedBox(height: 12),
@@ -148,7 +112,6 @@ class _PrintScreenState extends State<PrintScreen> {
               ],
             ),
           ),
-          // 生成ボタン
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
@@ -205,40 +168,38 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
+  // ─── UI ヘルパー ───────────────────────────────────────────
+
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
       children: [
         Icon(icon, color: AppTheme.gold, size: 18),
         const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppTheme.gold,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
-          ),
-        ),
+        Text(title,
+            style: const TextStyle(
+                color: AppTheme.gold,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1)),
         const SizedBox(width: 8),
         const Expanded(child: Divider(color: Color(0xFF333333))),
       ],
     );
   }
 
-  Widget _buildCheckTile(
-    String title,
-    String subtitle,
-    IconData icon,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
+  Widget _buildCheckTile(String title, String subtitle, IconData icon,
+      bool value, ValueChanged<bool> onChanged) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: value ? AppTheme.primaryRed.withValues(alpha: 0.08) : AppTheme.cardBg,
+        color: value
+            ? AppTheme.primaryRed.withValues(alpha: 0.08)
+            : AppTheme.cardBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: value ? AppTheme.primaryRed.withValues(alpha: 0.4) : const Color(0xFF333333),
+          color: value
+              ? AppTheme.primaryRed.withValues(alpha: 0.4)
+              : const Color(0xFF333333),
         ),
       ),
       child: CheckboxListTile(
@@ -249,13 +210,15 @@ class _PrintScreenState extends State<PrintScreen> {
         title: Text(title,
             style: TextStyle(
                 color: value ? Colors.white : AppTheme.lightGrey,
-                fontWeight: value ? FontWeight.bold : FontWeight.normal,
+                fontWeight:
+                    value ? FontWeight.bold : FontWeight.normal,
                 fontSize: 14)),
         subtitle: Text(subtitle,
             style: const TextStyle(color: AppTheme.grey, fontSize: 11)),
-        secondary: Icon(icon,
-            color: value ? AppTheme.primaryRed : AppTheme.grey, size: 20),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        secondary:
+            Icon(icon, color: value ? AppTheme.primaryRed : AppTheme.grey, size: 20),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -266,7 +229,8 @@ class _PrintScreenState extends State<PrintScreen> {
       children: [
         Icon(icon, color: AppTheme.gold, size: 16),
         const SizedBox(width: 10),
-        Text(text, style: const TextStyle(color: AppTheme.lightGrey, fontSize: 13)),
+        Text(text,
+            style: const TextStyle(color: AppTheme.lightGrey, fontSize: 13)),
       ],
     );
   }
@@ -275,10 +239,14 @@ class _PrintScreenState extends State<PrintScreen> {
     if (mounted) setState(() => _statusMessage = msg);
   }
 
-  /// メインのPDF生成処理
-  /// - フォント：ローカルTTFアセット（ネットワーク不要）
-  /// - 出力：web.Blob + createObjectURL（iOS Safari対応）
-  /// - 非同期チャンク：各セクション間でFuture.delayed(Duration.zero)を挿入
+  // ─── PDF 生成メイン ─────────────────────────────────────────
+
+  /// ポイント：
+  ///   1. フォントはローカルTTF（144KB）を非同期ロード
+  ///   2. セクションデータはDartオブジェクトとして先に全部収集（同期・軽量）
+  ///   3. pw.Page（固定ページ）を1枚ずつaddPage → awaitでyield
+  ///   4. pdf.save() は非同期なので問題なし
+  ///   5. web.Blob + createObjectURL でダウンロード（iOS Safari対応）
   Future<void> _generatePdf() async {
     setState(() {
       _isGenerating = true;
@@ -288,39 +256,24 @@ class _PrintScreenState extends State<PrintScreen> {
     final provider = Provider.of<AppProvider>(context, listen: false);
 
     try {
-      // UIスレッドに制御を返す
       await Future.delayed(Duration.zero);
 
-      // ── Step 1: フォント読み込み（ローカルアセット）──
-      _setStatus('フォント読み込み中...');
-      await Future.delayed(Duration.zero);
-
+      // ── Step 1: フォント読み込み ──
       pw.Font regularFont;
       pw.Font boldFont;
       try {
-        final regularData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
-        await Future.delayed(Duration.zero); // UIスレッドに制御を返す
-        regularFont = pw.Font.ttf(regularData);
+        final reg = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
         await Future.delayed(Duration.zero);
-
-        final boldData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+        regularFont = pw.Font.ttf(reg);
         await Future.delayed(Duration.zero);
-        boldFont = pw.Font.ttf(boldData);
+        final bld = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
         await Future.delayed(Duration.zero);
-      } catch (e) {
-        // フォント読み込み失敗時はHelveticaにフォールバック
+        boldFont = pw.Font.ttf(bld);
+        await Future.delayed(Duration.zero);
+      } catch (_) {
         regularFont = pw.Font.helvetica();
         boldFont = pw.Font.helveticaBold();
       }
-
-      _setStatus('PDFドキュメント作成中...');
-      await Future.delayed(Duration.zero);
-
-      // ── Step 2: PDFドキュメント構築 ──
-      final pdf = pw.Document();
-      final now = DateTime.now();
-      final dateStr = DateFormat('yyyy/M/d').format(now);
-      final fileName = '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
 
       final theme = pw.ThemeData.withFont(
         base: regularFont,
@@ -329,111 +282,89 @@ class _PrintScreenState extends State<PrintScreen> {
         boldItalic: boldFont,
       );
 
-      // ── Step 3: セクション毎にチャンク処理 ──
-      _setStatus('コンテンツ生成中...');
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyyy/M/d').format(now);
+      final fileName =
+          '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
+
+      // ── Step 2: データ収集（Dartオブジェクト、純粋計算）──
+      _setStatus('データ収集中...');
       await Future.delayed(Duration.zero);
 
-      final List<pw.Widget> content = [];
-
-      if (_inclMatchResult) {
-        _setStatus('試合別結果を生成中...');
-        await Future.delayed(Duration.zero);
-        content.add(_buildPdfMatchSection(provider));
-        content.add(pw.SizedBox(height: 16));
-      }
-
+      final _PdfData data = _collectData(provider);
       await Future.delayed(Duration.zero);
 
-      if (_inclPlayerStats) {
-        _setStatus('選手別成績を生成中...');
-        await Future.delayed(Duration.zero);
-        content.add(_buildPdfPlayerStats(provider));
-        content.add(pw.SizedBox(height: 16));
-      }
+      // ── Step 3: PDFドキュメント生成（1ページずつ addPage → yield）──
+      final pdf = pw.Document();
+      int pageIdx = 0;
+      final totalSections = _countSections();
 
-      await Future.delayed(Duration.zero);
+      // ページ追加ヘルパー（毎回yieldして画面更新を許可）
+      Future<void> addOnePage(List<pw.Widget> widgets) async {
+        pageIdx++;
+        _setStatus('ページ生成中... ($pageIdx/$totalSections)');
+        await Future.delayed(Duration.zero); // ← UIに制御を返す
 
-      if (_inclServeRanking) {
-        _setStatus('サーブランキングを生成中...');
-        await Future.delayed(Duration.zero);
-        content.add(_buildPdfServeRanking(provider));
-        content.add(pw.SizedBox(height: 16));
-      }
-
-      await Future.delayed(Duration.zero);
-
-      if (_inclReceiveRanking) {
-        _setStatus('レシーブランキングを生成中...');
-        await Future.delayed(Duration.zero);
-        content.add(_buildPdfReceiveRanking(provider));
-        content.add(pw.SizedBox(height: 16));
-      }
-
-      await Future.delayed(Duration.zero);
-
-      if (_inclTeamComparison) {
-        _setStatus('チーム比較を生成中...');
-        await Future.delayed(Duration.zero);
-        content.add(_buildPdfTeamComparison(provider));
-        content.add(pw.SizedBox(height: 16));
-      }
-
-      if (content.isEmpty) {
-        content.add(pw.Center(
-          child: pw.Text('出力項目が選択されていません',
-              style: pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
-        ));
-      }
-
-      // ── Step 4(a): ページ追加（セクションごとに分割してyield） ──
-      // MultiPage一括処理はレイアウト計算が重いため、
-      // セクションを小さく分割して addPage を複数回呼ぶ
-      _setStatus('ページ生成中 (1/3)...');
-      await Future.delayed(const Duration(milliseconds: 16)); // 1フレーム分待つ
-
-      // 先頭セクション群（試合結果 + 選手成績）
-      final content1 = content.take((content.length / 2).ceil()).toList();
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          theme: theme,
-          margin: const pw.EdgeInsets.all(30),
-          header: (ctx) => _buildPdfHeader(dateStr),
-          footer: (ctx) => _buildPdfFooter(ctx),
-          build: (ctx) => content1,
-        ),
-      );
-
-      _setStatus('ページ生成中 (2/3)...');
-      await Future.delayed(const Duration(milliseconds: 16));
-
-      // 後半セクション群（ランキング等）
-      final content2 = content.skip((content.length / 2).ceil()).toList();
-      if (content2.isNotEmpty) {
         pdf.addPage(
-          pw.MultiPage(
+          pw.Page(
             pageFormat: PdfPageFormat.a4,
             theme: theme,
             margin: const pw.EdgeInsets.all(30),
-            header: (ctx) => _buildPdfHeader(dateStr),
-            footer: (ctx) => _buildPdfFooter(ctx),
-            build: (ctx) => content2,
+            build: (ctx) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _pdfHeader(dateStr),
+                pw.SizedBox(height: 12),
+                ...widgets,
+                pw.Spacer(),
+                _pdfFooter(pageIdx),
+              ],
+            ),
           ),
         );
+        await Future.delayed(Duration.zero); // ← addPage後もyield
       }
 
-      // ── Step 4(b): PDF バイト列生成 ──
-      _setStatus('ページ生成中 (3/3)...');
-      await Future.delayed(const Duration(milliseconds: 16));
+      // 試合別結果
+      if (_inclMatchResult) {
+        await addOnePage([_buildMatchPage(data, theme)]);
+      }
+
+      // 選手別成績（選手数が多い場合は分割）
+      if (_inclPlayerStats) {
+        final chunks = _chunkPlayers(data.players, 10);
+        for (final chunk in chunks) {
+          await addOnePage([_buildPlayerPage(chunk, data, theme)]);
+        }
+      }
+
+      // サーブランキング
+      if (_inclServeRanking) {
+        await addOnePage([_buildServeRankPage(data, theme)]);
+      }
+
+      // レシーブランキング
+      if (_inclReceiveRanking) {
+        await addOnePage([_buildReceiveRankPage(data, theme)]);
+      }
+
+      // A/Bチーム比較
+      if (_inclTeamComparison) {
+        await addOnePage([_buildTeamCompPage(data, theme)]);
+      }
+
+      // ── Step 4: バイト列に変換 ──
+      _setStatus('PDFファイルを生成中...');
+      await Future.delayed(Duration.zero);
 
       final pdfBytes = await pdf.save();
-      await Future.delayed(const Duration(milliseconds: 16));
+      await Future.delayed(Duration.zero);
 
-      // ── Step 5: web.Blob + createObjectURL でダウンロード ──
+      // ── Step 5: ダウンロード ──
       _setStatus('ダウンロード準備中...');
       await Future.delayed(Duration.zero);
 
-      _downloadPdfBytes(pdfBytes, fileName);
+      _downloadBytes(pdfBytes, fileName);
 
       if (mounted) {
         setState(() {
@@ -458,54 +389,89 @@ class _PrintScreenState extends State<PrintScreen> {
           SnackBar(
             content: Text('PDF生成エラー: $e'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
+            duration: const Duration(seconds: 6),
           ),
         );
       }
     }
   }
 
-  /// web.Blob + createObjectURL を使ったPDFダウンロード
-  /// iOS Safari でも動作する方式
-  void _downloadPdfBytes(List<int> bytes, String fileName) {
-    // Uint8List → JSUint8Array に変換してBlobを作成
-    final uint8list = Uint8List.fromList(bytes);
-    final jsUint8Array = uint8list.toJS;
-
-    // JSArray<BlobPart> を作成（JSAnyとしてキャスト）
-    final blobParts = [jsUint8Array as JSAny].toJS;
-
-    final blob = web.Blob(
-      blobParts,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-
-    final url = web.URL.createObjectURL(blob);
-
-    // <a>タグを作成してクリックシミュレート
-    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.style.display = 'none';
-    web.document.body?.appendChild(anchor);
-    anchor.click();
-
-    // iOS対応：少し遅延してからURLを解放
-    Future.delayed(const Duration(seconds: 2), () {
-      web.URL.revokeObjectURL(url);
-      anchor.remove();
-    });
+  int _countSections() {
+    int n = 0;
+    if (_inclMatchResult) n++;
+    if (_inclPlayerStats) n++;
+    if (_inclServeRanking) n++;
+    if (_inclReceiveRanking) n++;
+    if (_inclTeamComparison) n++;
+    return n == 0 ? 1 : n;
   }
 
-  // ── PDF コンテンツ構築ヘルパー ──
+  // ─── データ収集（純粋Dartオブジェクト） ──────────────────────
 
-  pw.Widget _buildPdfHeader(String dateStr) {
+  _PdfData _collectData(AppProvider provider) {
+    final players = provider.players;
+    final matches = provider.matches;
+
+    // サーブ統計
+    final serveStats = <String, _ServeStats>{};
+    for (final p in players) {
+      final s = provider.getServeStatsByPlayer(p.id);
+      final total = s.values.fold(0, (a, b) => a + b);
+      final ace = s[ServeResult.ace] ?? 0;
+      final under = s[ServeResult.under] ?? 0;
+      final justIn = s[ServeResult.justIn] ?? 0;
+      final miss = s[ServeResult.miss] ?? 0;
+      serveStats[p.id] = _ServeStats(
+        total: total, ace: ace, under: under, justIn: justIn, miss: miss,
+      );
+    }
+
+    // レシーブ統計
+    final recvStats = <String, _RecvStats>{};
+    for (final p in players) {
+      final s = provider.getReceiveStatsByPlayer(p.id);
+      final total = s.values.fold(0, (a, b) => a + b);
+      final over = s[ReceiveResult.over] ?? 0;
+      final miss = s[ReceiveResult.miss] ?? 0;
+      recvStats[p.id] = _RecvStats(total: total, over: over, miss: miss);
+    }
+
+    // 試合ごとのカウント
+    final matchServe = <String, int>{};
+    final matchRecv = <String, int>{};
+    for (final m in matches) {
+      matchServe[m.id] = provider.getServeRecordsByMatch(m.id).length;
+      matchRecv[m.id] = provider.getReceiveRecordsByMatch(m.id).length;
+    }
+
+    return _PdfData(
+      players: players,
+      matches: matches,
+      serveStats: serveStats,
+      recvStats: recvStats,
+      matchServe: matchServe,
+      matchRecv: matchRecv,
+      teamA: provider.teamAPlayers,
+      teamB: provider.teamBPlayers,
+    );
+  }
+
+  List<List<dynamic>> _chunkPlayers(List players, int size) {
+    final result = <List<dynamic>>[];
+    for (int i = 0; i < players.length; i += size) {
+      result.add(players.sublist(i, (i + size).clamp(0, players.length)));
+    }
+    if (result.isEmpty) result.add([]);
+    return result;
+  }
+
+  // ─── PDFページ構築（pw.Widget返し） ───────────────────────────
+
+  pw.Widget _pdfHeader(String dateStr) {
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.only(bottom: 8),
       decoration: const pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.red800, width: 2),
-        ),
+        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.red800, width: 2)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -513,53 +479,80 @@ class _PrintScreenState extends State<PrintScreen> {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(
-                '藤橋JVC男子 バレーボール分析レポート',
-                style: pw.TextStyle(
-                  fontSize: 16,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.red900,
-                ),
-              ),
-              pw.Text(
-                'この一本、この一点',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.amber800),
-              ),
+              pw.Text('藤橋JVC男子 バレーボール分析レポート',
+                  style: pw.TextStyle(
+                      fontSize: 15,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.red900)),
+              pw.Text('この一本、この一点',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.amber800)),
             ],
           ),
-          pw.Text(dateStr, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+          pw.Text(dateStr,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey)),
         ],
       ),
     );
   }
 
-  pw.Widget _buildPdfFooter(pw.Context context) {
+  pw.Widget _pdfFooter(int pageNum) {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 6),
       decoration: const pw.BoxDecoration(
-        border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300)),
-      ),
+          border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300))),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text('藤橋JVC男子 バレーボール分析アプリ',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
-          pw.Text('${context.pageNumber} / ${context.pagesCount}',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+          pw.Text('- $pageNum -',
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
         ],
       ),
     );
   }
 
-  pw.Widget _buildPdfMatchSection(AppProvider provider) {
-    final matches = provider.matches;
+  pw.Widget _sectionTitle(String title) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const pw.EdgeInsets.only(bottom: 6),
+      decoration: const pw.BoxDecoration(
+        color: PdfColors.red50,
+        border: pw.Border(left: pw.BorderSide(color: PdfColors.red800, width: 3)),
+      ),
+      child: pw.Text(title,
+          style: pw.TextStyle(
+              fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
+    );
+  }
+
+  pw.Widget _th(String t) => pw.Container(
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Text(t,
+            style: pw.TextStyle(
+                fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            textAlign: pw.TextAlign.center),
+      );
+
+  pw.Widget _td(String t, {bool highlight = false}) => pw.Container(
+        padding: const pw.EdgeInsets.all(4),
+        child: pw.Text(t,
+            style: pw.TextStyle(
+                fontSize: 8,
+                color: highlight ? PdfColors.red900 : PdfColors.black,
+                fontWeight: highlight ? pw.FontWeight.bold : pw.FontWeight.normal),
+            textAlign: pw.TextAlign.center),
+      );
+
+  // 試合別結果ページ
+  pw.Widget _buildMatchPage(_PdfData data, pw.ThemeData theme) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('試合別結果'),
-        pw.SizedBox(height: 8),
-        if (matches.isEmpty)
-          pw.Text('試合データなし', style: const pw.TextStyle(color: PdfColors.grey))
+        _sectionTitle('試合別結果'),
+        if (data.matches.isEmpty)
+          pw.Text('試合データなし',
+              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
         else
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
@@ -567,86 +560,59 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
                 children: [
-                  _pdfTh('日付'), _pdfTh('チーム'), _pdfTh('対戦相手'),
-                  _pdfTh('サーブ数'), _pdfTh('レシーブ数'),
+                  _th('日付'), _th('チーム'), _th('対戦相手'),
+                  _th('サーブ数'), _th('レシーブ数'),
                 ],
               ),
-              ...matches.map((m) {
-                final s = provider.getServeRecordsByMatch(m.id).length;
-                final r = provider.getReceiveRecordsByMatch(m.id).length;
-                return pw.TableRow(
-                  children: [
-                    _pdfTd(DateFormat('M/d').format(m.date)),
-                    _pdfTd(m.team),
-                    _pdfTd(m.opponent),
-                    _pdfTd('$s'),
-                    _pdfTd('$r'),
-                  ],
-                );
-              }),
+              ...data.matches.map((m) => pw.TableRow(
+                    children: [
+                      _td(DateFormat('M/d').format(m.date)),
+                      _td(m.team),
+                      _td(m.opponent),
+                      _td('${data.matchServe[m.id] ?? 0}'),
+                      _td('${data.matchRecv[m.id] ?? 0}'),
+                    ],
+                  )),
             ],
           ),
       ],
     );
   }
 
-  pw.Widget _buildPdfPlayerStats(AppProvider provider) {
-    final players = provider.players;
+  // 選手別成績ページ（chunk単位）
+  pw.Widget _buildPlayerPage(
+      List chunk, _PdfData data, pw.ThemeData theme) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('選手別成績'),
-        pw.SizedBox(height: 8),
+        _sectionTitle('選手別成績'),
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          columnWidths: _inclPercentage
-              ? {
-                  0: const pw.FlexColumnWidth(2),
-                  1: const pw.FlexColumnWidth(1.5),
-                  2: const pw.FlexColumnWidth(1),
-                  3: const pw.FlexColumnWidth(1),
-                  4: const pw.FlexColumnWidth(1.2),
-                  5: const pw.FlexColumnWidth(1),
-                  6: const pw.FlexColumnWidth(1),
-                  7: const pw.FlexColumnWidth(1.2),
-                  8: const pw.FlexColumnWidth(1.2),
-                }
-              : {
-                  0: const pw.FlexColumnWidth(2),
-                  1: const pw.FlexColumnWidth(1.5),
-                  2: const pw.FlexColumnWidth(1),
-                  3: const pw.FlexColumnWidth(1),
-                  4: const pw.FlexColumnWidth(1.2),
-                  5: const pw.FlexColumnWidth(1),
-                  6: const pw.FlexColumnWidth(1),
-                },
           children: [
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.red900),
               children: [
-                _pdfTh('選手名'), _pdfTh('チーム'),
-                _pdfTh('エース'), _pdfTh('崩し'), _pdfTh('入っただけ'), _pdfTh('ミス'), _pdfTh('合計'),
-                if (_inclPercentage) _pdfTh('エース率'),
-                if (_inclPercentage) _pdfTh('ミス率'),
+                _th('選手名'), _th('チーム'),
+                _th('エース'), _th('崩し'), _th('入り'), _th('ミス'), _th('計'),
+                if (_inclPercentage) _th('エース率'),
+                if (_inclPercentage) _th('ミス率'),
               ],
             ),
-            ...players.map((p) {
-              final s = provider.getServeStatsByPlayer(p.id);
-              final total = s.values.fold(0, (a, b) => a + b);
-              final ace = s[ServeResult.ace] ?? 0;
-              final under = s[ServeResult.under] ?? 0;
-              final justIn = s[ServeResult.justIn] ?? 0;
-              final miss = s[ServeResult.miss] ?? 0;
-              final aceRate = total > 0 ? '${(ace / total * 100).toStringAsFixed(1)}%' : '-';
-              final missRate = total > 0 ? '${(miss / total * 100).toStringAsFixed(1)}%' : '-';
-              return pw.TableRow(
-                children: [
-                  _pdfTd(p.name), _pdfTd(p.team),
-                  _pdfTd('$ace'), _pdfTd('$under'), _pdfTd('$justIn'), _pdfTd('$miss'), _pdfTd('$total'),
-                  if (_inclPercentage) _pdfTd(aceRate),
-                  if (_inclPercentage) _pdfTd(missRate),
-                ],
-              );
+            ...chunk.map((p) {
+              final s = data.serveStats[p.id]!;
+              final aceR = s.total > 0
+                  ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
+                  : '-';
+              final missR = s.total > 0
+                  ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
+                  : '-';
+              return pw.TableRow(children: [
+                _td(p.name), _td(p.team),
+                _td('${s.ace}'), _td('${s.under}'),
+                _td('${s.justIn}'), _td('${s.miss}'), _td('${s.total}'),
+                if (_inclPercentage) _td(aceR),
+                if (_inclPercentage) _td(missR),
+              ]);
             }),
           ],
         ),
@@ -654,46 +620,53 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfServeRanking(AppProvider provider) {
-    final players = provider.players;
-    final stats = players.map((p) {
-      final s = provider.getServeStatsByPlayer(p.id);
-      final total = s.values.fold(0, (a, b) => a + b);
-      final ace = s[ServeResult.ace] ?? 0;
-      final miss = s[ServeResult.miss] ?? 0;
-      final aceRate = total > 0 ? ace / total * 100 : 0.0;
-      final missRate = total > 0 ? miss / total * 100 : 0.0;
-      return {'player': p, 'total': total, 'aceRate': aceRate, 'missRate': missRate};
-    }).where((s) => (s['total'] as int) > 0).toList();
-
-    stats.sort((a, b) => (b['aceRate'] as double).compareTo(a['aceRate'] as double));
+  // サーブランキングページ
+  pw.Widget _buildServeRankPage(_PdfData data, pw.ThemeData theme) {
+    final ranked = data.players
+        .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final rA = data.serveStats[a.id]!;
+        final rB = data.serveStats[b.id]!;
+        final aceA = rA.total > 0 ? rA.ace / rA.total : 0.0;
+        final aceB = rB.total > 0 ? rB.ace / rB.total : 0.0;
+        return aceB.compareTo(aceA);
+      });
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('サーブランキング（エース率順）'),
-        pw.SizedBox(height: 8),
-        if (stats.isEmpty)
-          pw.Text('サーブデータなし', style: const pw.TextStyle(color: PdfColors.grey))
+        _sectionTitle('サーブランキング（エース率順）'),
+        if (ranked.isEmpty)
+          pw.Text('データなし',
+              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
         else
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
-                children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('サーブ数'), _pdfTh('エース率'), _pdfTh('ミス率')],
+                children: [
+                  _th('順位'), _th('選手名'), _th('サーブ数'),
+                  _th('エース率'), _th('ミス率'),
+                ],
               ),
-              ...stats.asMap().entries.map((e) {
+              ...ranked.asMap().entries.map((e) {
                 final idx = e.key;
-                final s = e.value;
-                final p = s['player'] as dynamic;
+                final p = e.value;
+                final s = data.serveStats[p.id]!;
+                final aceR =
+                    s.total > 0 ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%' : '-';
+                final missR =
+                    s.total > 0 ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%' : '-';
                 return pw.TableRow(
-                  decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
+                  decoration: idx == 0
+                      ? const pw.BoxDecoration(color: PdfColors.amber50)
+                      : null,
                   children: [
-                    _pdfTd('${idx + 1}位'), _pdfTd(p.name),
-                    _pdfTd('${s['total']}本'),
-                    _pdfTd('${(s['aceRate'] as double).toStringAsFixed(1)}%'),
-                    _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
+                    _td('${idx + 1}位'), _td(p.name),
+                    _td('${s.total}本'), _td(aceR, highlight: idx == 0),
+                    _td(missR),
                   ],
                 );
               }),
@@ -703,46 +676,53 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfReceiveRanking(AppProvider provider) {
-    final players = provider.players;
-    final stats = players.map((p) {
-      final s = provider.getReceiveStatsByPlayer(p.id);
-      final total = s.values.fold(0, (a, b) => a + b);
-      final over = s[ReceiveResult.over] ?? 0;
-      final miss = s[ReceiveResult.miss] ?? 0;
-      final overRate = total > 0 ? over / total * 100 : 0.0;
-      final missRate = total > 0 ? miss / total * 100 : 0.0;
-      return {'player': p, 'total': total, 'overRate': overRate, 'missRate': missRate};
-    }).where((s) => (s['total'] as int) > 0).toList();
-
-    stats.sort((a, b) => (b['overRate'] as double).compareTo(a['overRate'] as double));
+  // レシーブランキングページ
+  pw.Widget _buildReceiveRankPage(_PdfData data, pw.ThemeData theme) {
+    final ranked = data.players
+        .where((p) => (data.recvStats[p.id]?.total ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final rA = data.recvStats[a.id]!;
+        final rB = data.recvStats[b.id]!;
+        final ovA = rA.total > 0 ? rA.over / rA.total : 0.0;
+        final ovB = rB.total > 0 ? rB.over / rB.total : 0.0;
+        return ovB.compareTo(ovA);
+      });
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('レシーブランキング（オーバー率順）'),
-        pw.SizedBox(height: 8),
-        if (stats.isEmpty)
-          pw.Text('レシーブデータなし', style: const pw.TextStyle(color: PdfColors.grey))
+        _sectionTitle('レシーブランキング（オーバー率順）'),
+        if (ranked.isEmpty)
+          pw.Text('データなし',
+              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
         else
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
-                children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('レシーブ数'), _pdfTh('オーバー率'), _pdfTh('ミス率')],
+                children: [
+                  _th('順位'), _th('選手名'), _th('レシーブ数'),
+                  _th('オーバー率'), _th('ミス率'),
+                ],
               ),
-              ...stats.asMap().entries.map((e) {
+              ...ranked.asMap().entries.map((e) {
                 final idx = e.key;
-                final s = e.value;
-                final p = s['player'] as dynamic;
+                final p = e.value;
+                final s = data.recvStats[p.id]!;
+                final ovR =
+                    s.total > 0 ? '${(s.over / s.total * 100).toStringAsFixed(1)}%' : '-';
+                final missR =
+                    s.total > 0 ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%' : '-';
                 return pw.TableRow(
-                  decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
+                  decoration: idx == 0
+                      ? const pw.BoxDecoration(color: PdfColors.amber50)
+                      : null,
                   children: [
-                    _pdfTd('${idx + 1}位'), _pdfTd(p.name),
-                    _pdfTd('${s['total']}本'),
-                    _pdfTd('${(s['overRate'] as double).toStringAsFixed(1)}%'),
-                    _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
+                    _td('${idx + 1}位'), _td(p.name),
+                    _td('${s.total}本'), _td(ovR, highlight: idx == 0),
+                    _td(missR),
                   ],
                 );
               }),
@@ -752,92 +732,112 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  pw.Widget _buildPdfTeamComparison(AppProvider provider) {
-    final teamA = provider.teamAPlayers;
-    final teamB = provider.teamBPlayers;
+  // A/Bチーム比較ページ
+  pw.Widget _buildTeamCompPage(_PdfData data, pw.ThemeData theme) {
+    int sumStat(List players, int Function(_ServeStats) fn) =>
+        players.fold(0, (s, p) => s + fn(data.serveStats[p.id]!));
 
-    int sumServe(List players) {
-      return players.fold(0, (sum, p) {
-        final s = provider.getServeStatsByPlayer(p.id);
-        return sum + s.values.fold(0, (a, b) => a + b);
-      });
-    }
-
-    int sumAce(List players) {
-      return players.fold(0, (sum, p) {
-        final s = provider.getServeStatsByPlayer(p.id);
-        return sum + (s[ServeResult.ace] ?? 0);
-      });
-    }
-
-    int sumMiss(List players) {
-      return players.fold(0, (sum, p) {
-        final s = provider.getServeStatsByPlayer(p.id);
-        return sum + (s[ServeResult.miss] ?? 0);
-      });
-    }
-
-    final aTotal = sumServe(teamA);
-    final bTotal = sumServe(teamB);
-    final aAce = aTotal > 0 ? sumAce(teamA) / aTotal * 100 : 0.0;
-    final bAce = bTotal > 0 ? sumAce(teamB) / bTotal * 100 : 0.0;
-    final aMiss = aTotal > 0 ? sumMiss(teamA) / aTotal * 100 : 0.0;
-    final bMiss = bTotal > 0 ? sumMiss(teamB) / bTotal * 100 : 0.0;
+    final aTotal = sumStat(data.teamA, (s) => s.total);
+    final bTotal = sumStat(data.teamB, (s) => s.total);
+    final aAce = aTotal > 0 ? sumStat(data.teamA, (s) => s.ace) / aTotal * 100 : 0.0;
+    final bAce = bTotal > 0 ? sumStat(data.teamB, (s) => s.ace) / bTotal * 100 : 0.0;
+    final aMiss = aTotal > 0 ? sumStat(data.teamA, (s) => s.miss) / aTotal * 100 : 0.0;
+    final bMiss = bTotal > 0 ? sumStat(data.teamB, (s) => s.miss) / bTotal * 100 : 0.0;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _pdfSectionTitle('A/Bチーム比較'),
-        pw.SizedBox(height: 8),
+        _sectionTitle('A/Bチーム比較'),
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
           children: [
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.red900),
-              children: [_pdfTh(''), _pdfTh('Aチーム'), _pdfTh('Bチーム')],
+              children: [_th(''), _th('Aチーム'), _th('Bチーム')],
             ),
-            pw.TableRow(children: [_pdfTd('サーブ総数'), _pdfTd('$aTotal'), _pdfTd('$bTotal')]),
-            pw.TableRow(children: [_pdfTd('エース率'), _pdfTd('${aAce.toStringAsFixed(1)}%'), _pdfTd('${bAce.toStringAsFixed(1)}%')]),
-            pw.TableRow(children: [_pdfTd('ミス率'), _pdfTd('${aMiss.toStringAsFixed(1)}%'), _pdfTd('${bMiss.toStringAsFixed(1)}%')]),
+            pw.TableRow(children: [
+              _td('サーブ総数'), _td('$aTotal'), _td('$bTotal')
+            ]),
+            pw.TableRow(children: [
+              _td('エース率'),
+              _td('${aAce.toStringAsFixed(1)}%', highlight: aAce > bAce),
+              _td('${bAce.toStringAsFixed(1)}%', highlight: bAce > aAce),
+            ]),
+            pw.TableRow(children: [
+              _td('ミス率'),
+              _td('${aMiss.toStringAsFixed(1)}%'),
+              _td('${bMiss.toStringAsFixed(1)}%'),
+            ]),
           ],
         ),
       ],
     );
   }
 
-  pw.Widget _pdfSectionTitle(String title) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: const pw.BoxDecoration(
-        color: PdfColors.red50,
-        border: pw.Border(left: pw.BorderSide(color: PdfColors.red800, width: 3)),
-      ),
-      child: pw.Text(
-        title,
-        style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.red900),
-      ),
-    );
-  }
+  // ─── ダウンロード ─────────────────────────────────────────────
 
-  pw.Widget _pdfTh(String text) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(5),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-        textAlign: pw.TextAlign.center,
-      ),
+  void _downloadBytes(List<int> bytes, String fileName) {
+    final uint8list = Uint8List.fromList(bytes);
+    final jsUint8Array = uint8list.toJS;
+    final blobParts = [jsUint8Array as JSAny].toJS;
+    final blob = web.Blob(
+      blobParts,
+      web.BlobPropertyBag(type: 'application/pdf'),
     );
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = 'none';
+    web.document.body?.appendChild(anchor);
+    anchor.click();
+    Future.delayed(const Duration(seconds: 2), () {
+      web.URL.revokeObjectURL(url);
+      anchor.remove();
+    });
   }
+}
 
-  pw.Widget _pdfTd(String text) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(4),
-      child: pw.Text(
-        text,
-        style: const pw.TextStyle(fontSize: 9, color: PdfColors.black),
-        textAlign: pw.TextAlign.center,
-      ),
-    );
-  }
+// ─── データクラス（軽量Dartオブジェクト） ──────────────────────────
+
+class _PdfData {
+  final List players;
+  final List matches;
+  final Map<String, _ServeStats> serveStats;
+  final Map<String, _RecvStats> recvStats;
+  final Map<String, int> matchServe;
+  final Map<String, int> matchRecv;
+  final List teamA;
+  final List teamB;
+
+  const _PdfData({
+    required this.players,
+    required this.matches,
+    required this.serveStats,
+    required this.recvStats,
+    required this.matchServe,
+    required this.matchRecv,
+    required this.teamA,
+    required this.teamB,
+  });
+}
+
+class _ServeStats {
+  final int total, ace, under, justIn, miss;
+  const _ServeStats({
+    required this.total,
+    required this.ace,
+    required this.under,
+    required this.justIn,
+    required this.miss,
+  });
+}
+
+class _RecvStats {
+  final int total, over, miss;
+  const _RecvStats({
+    required this.total,
+    required this.over,
+    required this.miss,
+  });
 }
