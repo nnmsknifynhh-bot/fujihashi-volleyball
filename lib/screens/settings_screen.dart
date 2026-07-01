@@ -215,30 +215,36 @@ class _SettingsScreenState extends State<SettingsScreen>
           );
         }
 
+        // ↑↓ボタンで並び替えるヘルパー
+        Future<void> movePlayer(int oldIndex, int newIndex) async {
+          if (newIndex < 0 || newIndex >= players.length) return;
+          final reordered = List<Player>.from(players);
+          final item = reordered.removeAt(oldIndex);
+          reordered.insert(newIndex, item);
+          for (int i = 0; i < reordered.length; i++) {
+            reordered[i].sortOrder = i;
+            await provider.updatePlayer(reordered[i]);
+          }
+        }
+
         return CustomScrollView(
           slivers: [
-            // 通常の選手リスト（並び替え可能）
-            SliverReorderableList(
-              itemCount: players.length,
-              onReorder: (oldIndex, newIndex) async {
-                if (newIndex > oldIndex) newIndex--;
-                final reordered = List<Player>.from(players);
-                final item = reordered.removeAt(oldIndex);
-                reordered.insert(newIndex, item);
-                for (int i = 0; i < reordered.length; i++) {
-                  reordered[i].sortOrder = i;
-                  await provider.updatePlayer(reordered[i]);
-                }
-              },
-              itemBuilder: (context, index) {
-                final player = players[index];
-                return ReorderableDragStartListener(
-                  key: ValueKey(player.id),
-                  index: index,
-                  child: _buildPlayerCard(context, player, provider,
-                      key: ValueKey('card_${player.id}')),
-                );
-              },
+            // 通常の選手リスト（↑↓ボタンで並び替え）
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final player = players[index];
+                  return _buildPlayerCard(
+                    context, player, provider,
+                    key: ValueKey('card_${player.id}'),
+                    index: index,
+                    total: players.length,
+                    onMoveUp: index > 0 ? () => movePlayer(index, index - 1) : null,
+                    onMoveDown: index < players.length - 1 ? () => movePlayer(index, index + 1) : null,
+                  );
+                },
+                childCount: players.length,
+              ),
             ),
             // 未割り当て選手セクション（Aタブのみ）
             if (unassigned.isNotEmpty) ...[
@@ -390,8 +396,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildPlayerCard(
-      BuildContext context, Player player, AppProvider provider,
-      {required Key key}) {
+    BuildContext context, Player player, AppProvider provider, {
+    required Key key,
+    int? index,
+    int? total,
+    VoidCallback? onMoveUp,
+    VoidCallback? onMoveDown,
+  }) {
     return Container(
       key: key,
       margin: const EdgeInsets.only(bottom: 8),
@@ -400,63 +411,95 @@ class _SettingsScreenState extends State<SettingsScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF333333)),
       ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: player.team == 'A'
-                ? AppTheme.primaryRed.withValues(alpha: 0.15)
-                : Colors.blue.withValues(alpha: 0.15),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              player.number.isNotEmpty ? '#${player.number}' : '?',
-              style: TextStyle(
-                color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            // 背番号アイコン
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: player.team == 'A'
+                    ? AppTheme.primaryRed.withValues(alpha: 0.15)
+                    : Colors.blue.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  player.number.isNotEmpty ? '#${player.number}' : '?',
+                  style: TextStyle(
+                    color: player.team == 'A' ? AppTheme.primaryRed : Colors.blue,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        title: Text(
-          player.name,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text(
-          '${player.team}チーム'
-          '${player.number.isNotEmpty ? " ・背番号 ${player.number}" : ""}',
-          style: const TextStyle(color: AppTheme.grey, fontSize: 12),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+            const SizedBox(width: 10),
+            // 名前・チーム
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(player.name,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                  Text(
+                    '${player.team}チーム'
+                    '${player.number.isNotEmpty ? " ・背番号 ${player.number}" : ""}',
+                    style: const TextStyle(color: AppTheme.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            // 並び替えボタン（↑↓）
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 32,
+                  height: 28,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.keyboard_arrow_up,
+                        color: onMoveUp != null ? AppTheme.gold : AppTheme.grey.withValues(alpha: 0.3),
+                        size: 22),
+                    onPressed: onMoveUp,
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  height: 28,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.keyboard_arrow_down,
+                        color: onMoveDown != null ? AppTheme.gold : AppTheme.grey.withValues(alpha: 0.3),
+                        size: 22),
+                    onPressed: onMoveDown,
+                  ),
+                ),
+              ],
+            ),
+            // 編集・削除ボタン
             IconButton(
               icon: const Icon(Icons.edit, color: AppTheme.gold, size: 20),
-              onPressed: () =>
-                  _showEditPlayerDialog(context, player, provider),
-              tooltip: '編集',
+              onPressed: () => _showEditPlayerDialog(context, player, provider),
             ),
             IconButton(
-              icon: const Icon(Icons.delete,
-                  color: AppTheme.primaryRed, size: 20),
+              icon: const Icon(Icons.delete, color: AppTheme.primaryRed, size: 20),
               onPressed: () async {
                 final confirm = await _confirmDelete(context, player.name);
                 if (confirm == true) {
                   await provider.deletePlayer(player.id);
                 }
               },
-              tooltip: '削除',
             ),
-            const Icon(Icons.drag_handle, color: AppTheme.grey, size: 20),
           ],
         ),
       ),

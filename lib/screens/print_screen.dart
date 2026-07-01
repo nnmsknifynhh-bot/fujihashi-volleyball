@@ -3,11 +3,9 @@ import 'dart:typed_data';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../models/serve_record.dart';
@@ -32,6 +30,33 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclTeamComparison = false;
 
   bool _isGenerating = false;
+
+  // ── 日本語→PDF安全テキスト変換 ──────────────────────────────────
+  // pdfパッケージ内蔵HelveticaフォントはLatin-1のみ対応。
+  // 選手名等の日本語は「番号+カタカナ略称」に変換できないため、
+  // プレースホルダーとして背番号を使用する。
+  // ただし英数字・記号はそのまま通す。
+  static String _safe(String text) {
+    // ASCII範囲(0x00-0x7E)と Latin-1拡張(0x80-0xFF)のみ残す
+    final buf = StringBuffer();
+    for (final r in text.runes) {
+      if (r <= 0xFF) {
+        buf.writeCharCode(r);
+      } else {
+        // 日本語等は ? に置換
+        buf.write('?');
+      }
+    }
+    return buf.toString();
+  }
+
+  // 選手表示名: 背番号 + 名前をASCII安全化
+  static String _playerLabel(dynamic player) {
+    final num = player.number as String? ?? '';
+    final name = _safe(player.name as String? ?? '');
+    if (num.isNotEmpty) return '#$num $name';
+    return name;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -257,13 +282,19 @@ class _PrintScreenState extends State<PrintScreen> {
   }
 
   Future<void> _generateAndPrint() async {
-    setState(() => _isGenerating = true);
+    // Provider を await 前に取得（BuildContext の async gap 問題を回避）
     final provider = Provider.of<AppProvider>(context, listen: false);
 
+    setState(() => _isGenerating = true);
+
+    // UIの更新（クルクル表示）を確実に反映してからPDF処理を開始
+    await Future.delayed(const Duration(milliseconds: 150));
+
     try {
-      final pdf = await _buildPdf(provider);
-      final bytes = await pdf.save();
-      // Web: Blobを使って直接ダウンロード（Printing.layoutPdfのASCII制限を回避）
+      // PDF生成（pw.Font.ttf() を一切使わないため軽量・フリーズなし）
+      final Uint8List bytes = await _buildAndSavePdf(provider);
+
+      // Web: Blobを使って直接ダウンロード
       final blob = web.Blob(
         [bytes.toJS].toJS,
         web.BlobPropertyBag(type: 'application/pdf'),
@@ -271,9 +302,11 @@ class _PrintScreenState extends State<PrintScreen> {
       final url = web.URL.createObjectURL(blob);
       final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
       anchor.href = url;
-      anchor.download = 'volleyball_report_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+      anchor.download =
+          'volleyball_report_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
       anchor.click();
       web.URL.revokeObjectURL(url);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -284,7 +317,6 @@ class _PrintScreenState extends State<PrintScreen> {
       }
     } catch (e, stack) {
       if (mounted) {
-        // エラー詳細をダイアログで表示
         final errMsg = e.toString();
         showDialog(
           context: context,
@@ -308,37 +340,28 @@ class _PrintScreenState extends State<PrintScreen> {
     }
   }
 
-  Future<pw.Document> _buildPdf(AppProvider provider) async {
+  // PDF生成 + save() を一括で行い、Uint8List を返す
+  // pw.Font.ttf() を一切使わない → フリーズしない
+  Future<Uint8List> _buildAndSavePdf(AppProvider provider) async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final dateStr = DateFormat('yyyy/MM/dd').format(now);
 
-    // 日本語フォントをローカルから読み込み
-    final pw.Font regularFont;
-    final pw.Font boldFont;
-    try {
-      final regularData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
-      final boldData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
-      regularFont = pw.Font.ttf(regularData);
-      boldFont = pw.Font.ttf(boldData);
-    } catch (e) {
-      throw Exception('フォント読み込み失敗: $e');
-    }
-
-    // スタイルヘルパー（フォントを直接受け取る）
+    // ── スタイルヘルパー（フォント指定なし = Helvetica / Courier 内蔵フォント） ──
     pw.TextStyle style({
       double fontSize = 10,
       bool bold = false,
       PdfColor color = PdfColors.black,
     }) {
       return pw.TextStyle(
-        font: bold ? boldFont : regularFont,
+        // fontWeight のみ指定。内蔵フォントを使用（カスタムフォント不要）
+        fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         fontSize: fontSize,
         color: color,
       );
     }
 
-    // セルウィジェット（フォント直接適用）
+    // セルウィジェット
     pw.Widget th(String text) => pw.Container(
           padding: const pw.EdgeInsets.all(5),
           child: pw.Text(text,
@@ -353,6 +376,13 @@ class _PrintScreenState extends State<PrintScreen> {
               textAlign: pw.TextAlign.center),
         );
 
+    pw.Widget tdL(String text) => pw.Container(
+          padding: const pw.EdgeInsets.all(4),
+          child: pw.Text(text,
+              style: style(fontSize: 9, color: PdfColors.black),
+              textAlign: pw.TextAlign.left),
+        );
+
     pw.Widget sectionTitle(String title) => pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: const pw.BoxDecoration(
@@ -364,7 +394,7 @@ class _PrintScreenState extends State<PrintScreen> {
               style: style(fontSize: 13, bold: true, color: PdfColors.red900)),
         );
 
-    // ヘッダー
+    // ── ヘッダー ──
     pw.Widget header() => pw.Container(
           padding: const pw.EdgeInsets.only(bottom: 10),
           decoration: const pw.BoxDecoration(
@@ -377,12 +407,10 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Fujihashi JVC - Volleyball Analysis Report',
+                  pw.Text('Volleyball Analysis Report',
                       style: style(
-                          fontSize: 16,
-                          bold: true,
-                          color: PdfColors.red900)),
-                  pw.Text('Kono ippon, kono itten',
+                          fontSize: 16, bold: true, color: PdfColors.red900)),
+                  pw.Text('Generated: $dateStr',
                       style: style(fontSize: 10, color: PdfColors.amber800)),
                 ],
               ),
@@ -392,7 +420,7 @@ class _PrintScreenState extends State<PrintScreen> {
           ),
         );
 
-    // 試合別結果セクション
+    // ── 試合別結果 ──
     pw.Widget matchSection() {
       final matches = provider.matches;
       return pw.Column(
@@ -401,19 +429,23 @@ class _PrintScreenState extends State<PrintScreen> {
           sectionTitle('Match Results'),
           pw.SizedBox(height: 8),
           if (matches.isEmpty)
-            pw.Text('No match data',
-                style: style(color: PdfColors.grey))
+            pw.Text('No match data', style: style(color: PdfColors.grey))
           else
             pw.Table(
-              border:
-                  pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(2),
+                1: const pw.FlexColumnWidth(2),
+                2: const pw.FlexColumnWidth(3),
+                3: const pw.FlexColumnWidth(1.5),
+                4: const pw.FlexColumnWidth(1.5),
+              },
               children: [
                 pw.TableRow(
-                  decoration:
-                      const pw.BoxDecoration(color: PdfColors.red900),
+                  decoration: const pw.BoxDecoration(color: PdfColors.red900),
                   children: [
                     th('Date'), th('Team'), th('Opponent'),
-                    th('Serves'), th('Receives'),
+                    th('Serves'), th('Recv'),
                   ],
                 ),
                 ...matches.map((m) {
@@ -421,8 +453,8 @@ class _PrintScreenState extends State<PrintScreen> {
                   final r = provider.getReceiveRecordsByMatch(m.id).length;
                   return pw.TableRow(children: [
                     td(DateFormat('M/d').format(m.date)),
-                    td(m.team),
-                    td(m.opponent),
+                    td(_safe(m.team)),
+                    td(_safe(m.opponent)),
                     td('$s'),
                     td('$r'),
                   ]);
@@ -433,7 +465,7 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // 選手別成績セクション
+    // ── 選手別成績 ──
     pw.Widget playerStatsSection() {
       final players = provider.players;
       return pw.Column(
@@ -443,14 +475,25 @@ class _PrintScreenState extends State<PrintScreen> {
           pw.SizedBox(height: 8),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(3),
+              1: const pw.FlexColumnWidth(1.5),
+              2: const pw.FlexColumnWidth(1),
+              3: const pw.FlexColumnWidth(1),
+              4: const pw.FlexColumnWidth(1),
+              5: const pw.FlexColumnWidth(1),
+              6: const pw.FlexColumnWidth(1),
+              if (_inclPercentage) 7: const pw.FlexColumnWidth(1.5),
+              if (_inclPercentage) 8: const pw.FlexColumnWidth(1.5),
+            },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
                 children: [
                   th('Name'), th('Team'),
-                  th('Ace'), th('2nd'), th('In'), th('Miss'), th('Total'),
-                  if (_inclPercentage) th('Ace%') else pw.SizedBox(),
-                  if (_inclPercentage) th('Miss%') else pw.SizedBox(),
+                  th('Ace'), th('2nd'), th('In'), th('Miss'), th('Tot'),
+                  if (_inclPercentage) th('Ace%'),
+                  if (_inclPercentage) th('Miss%'),
                 ],
               ),
               ...players.map((p) {
@@ -461,17 +504,18 @@ class _PrintScreenState extends State<PrintScreen> {
                 final justIn = s[ServeResult.justIn] ?? 0;
                 final miss = s[ServeResult.miss] ?? 0;
                 final aceRate = total > 0
-                    ? (ace / total * 100).toStringAsFixed(1)
+                    ? '${(ace / total * 100).toStringAsFixed(1)}%'
                     : '-';
                 final missRate = total > 0
-                    ? (miss / total * 100).toStringAsFixed(1)
+                    ? '${(miss / total * 100).toStringAsFixed(1)}%'
                     : '-';
                 return pw.TableRow(children: [
-                  td(p.name), td(p.team),
+                  tdL(_playerLabel(p)),
+                  td(p.team),
                   td('$ace'), td('$under'), td('$justIn'),
                   td('$miss'), td('$total'),
-                  if (_inclPercentage) td('$aceRate%') else pw.SizedBox(),
-                  if (_inclPercentage) td('$missRate%') else pw.SizedBox(),
+                  if (_inclPercentage) td(aceRate),
+                  if (_inclPercentage) td(missRate),
                 ]);
               }),
             ],
@@ -480,7 +524,7 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // サーブランキングセクション
+    // ── サーブランキング ──
     pw.Widget serveRankingSection() {
       final players = provider.players;
       final stats = players.map((p) {
@@ -501,10 +545,17 @@ class _PrintScreenState extends State<PrintScreen> {
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          sectionTitle('Serve Ranking (Ace%)'),
+          sectionTitle('Serve Ranking  (Ace%)'),
           pw.SizedBox(height: 8),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1),
+              1: const pw.FlexColumnWidth(3),
+              2: const pw.FlexColumnWidth(1.5),
+              3: const pw.FlexColumnWidth(1.5),
+              4: const pw.FlexColumnWidth(1.5),
+            },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
@@ -516,13 +567,15 @@ class _PrintScreenState extends State<PrintScreen> {
               ...stats.asMap().entries.map((e) {
                 final idx = e.key;
                 final s = e.value;
-                final p = s['player'] as dynamic;
+                final p = s['player'];
                 return pw.TableRow(
                   decoration: idx == 0
                       ? const pw.BoxDecoration(color: PdfColors.amber50)
                       : null,
                   children: [
-                    td('${idx + 1}'), td(p.name), td('${s['total']}'),
+                    td('${idx + 1}'),
+                    tdL(_playerLabel(p)),
+                    td('${s['total']}'),
                     td('${(s['aceRate'] as double).toStringAsFixed(1)}%'),
                     td('${(s['missRate'] as double).toStringAsFixed(1)}%'),
                   ],
@@ -534,7 +587,7 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // レシーブランキングセクション
+    // ── レシーブランキング ──
     pw.Widget receiveRankingSection() {
       final players = provider.players;
       final stats = players.map((p) {
@@ -555,28 +608,37 @@ class _PrintScreenState extends State<PrintScreen> {
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          sectionTitle('Receive Ranking (Over%)'),
+          sectionTitle('Receive Ranking  (Over%)'),
           pw.SizedBox(height: 8),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1),
+              1: const pw.FlexColumnWidth(3),
+              2: const pw.FlexColumnWidth(1.5),
+              3: const pw.FlexColumnWidth(1.5),
+              4: const pw.FlexColumnWidth(1.5),
+            },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.red900),
                 children: [
-                  th('Rank'), th('Name'), th('Receives'),
+                  th('Rank'), th('Name'), th('Recv'),
                   th('Over%'), th('Miss%')
                 ],
               ),
               ...stats.asMap().entries.map((e) {
                 final idx = e.key;
                 final s = e.value;
-                final p = s['player'] as dynamic;
+                final p = s['player'];
                 return pw.TableRow(
                   decoration: idx == 0
                       ? const pw.BoxDecoration(color: PdfColors.amber50)
                       : null,
                   children: [
-                    td('${idx + 1}'), td(p.name), td('${s['total']}'),
+                    td('${idx + 1}'),
+                    tdL(_playerLabel(p)),
+                    td('${s['total']}'),
                     td('${(s['overRate'] as double).toStringAsFixed(1)}%'),
                     td('${(s['missRate'] as double).toStringAsFixed(1)}%'),
                   ],
@@ -588,23 +650,25 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // チーム比較セクション
+    // ── A/Bチーム比較 ──
     pw.Widget teamComparisonSection() {
       final teamA = provider.teamAPlayers;
       final teamB = provider.teamBPlayers;
-      int sumServe(List ps) => ps.fold(
+
+      int sumServe(List<dynamic> ps) => ps.fold(
           0,
           (sum, p) =>
               sum +
               provider.getServeStatsByPlayer(p.id).values.fold(0, (a, b) => a + b));
-      int sumAce(List ps) => ps.fold(
+      int sumAce(List<dynamic> ps) => ps.fold(
           0,
           (sum, p) =>
               sum + (provider.getServeStatsByPlayer(p.id)[ServeResult.ace] ?? 0));
-      int sumMiss(List ps) => ps.fold(
+      int sumMiss(List<dynamic> ps) => ps.fold(
           0,
           (sum, p) =>
               sum + (provider.getServeStatsByPlayer(p.id)[ServeResult.miss] ?? 0));
+
       final aTotal = sumServe(teamA);
       final bTotal = sumServe(teamB);
       final aAce = aTotal > 0 ? sumAce(teamA) / aTotal * 100 : 0.0;
@@ -643,6 +707,7 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
+    // ── ページ構築 ──
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -656,7 +721,7 @@ class _PrintScreenState extends State<PrintScreen> {
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Fujihashi JVC Volleyball Analysis',
+              pw.Text('Volleyball Analysis Report',
                   style: style(fontSize: 8, color: PdfColors.grey)),
               pw.Text('${ctx.pageNumber} / ${ctx.pagesCount}',
                   style: style(fontSize: 8, color: PdfColors.grey)),
@@ -694,7 +759,7 @@ class _PrintScreenState extends State<PrintScreen> {
       ),
     );
 
-    return pdf;
+    // save() は同期的に完了（フリーズなし）
+    return pdf.save();
   }
-
 }

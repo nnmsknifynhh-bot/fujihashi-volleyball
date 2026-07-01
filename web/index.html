@@ -29,10 +29,24 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>serve_analyzer</title>
+  <title>Serve Analyzer</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Service Worker を完全無効化（キャッシュ問題を防ぐ）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let r of registrations) { r.unregister(); }
+      });
+      caches.keys().then(function(names) {
+        names.forEach(function(n) { caches.delete(n); });
+      });
+      // 新規登録をブロック
+      navigator.serviceWorker.register = function() { return Promise.reject('disabled'); };
+    }
+  </script>
+  <!-- build:20250717 -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
