@@ -5,10 +5,10 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import 'dart:js_interop';
-import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 import '../providers/app_provider.dart';
+import '../models/player.dart';
 import '../models/serve_record.dart';
 import '../utils/app_theme.dart';
 
@@ -17,6 +17,7 @@ import '../utils/app_theme.dart';
 class PrintScreen extends StatefulWidget {
   /// 'A', 'B', 'all' のいずれか
   final String teamFilter;
+
   /// null = チーム全員, 非null = 個別選択中の選手IDセット
   final Set<String>? selectedPlayerIds;
 
@@ -31,21 +32,29 @@ class PrintScreen extends StatefulWidget {
 }
 
 class _PrintScreenState extends State<PrintScreen> {
-  bool _inclMatchResult = true;
-  bool _inclPlayerStats = true;
-  bool _inclServeRanking = true;
-  bool _inclReceiveRanking = true;
-  bool _inclPercentage = true;
-  bool _inclAiComment = false;
-  bool _inclOpponentAnalysis = false;
-  bool _inclPeriodSummary = true;
-  bool _inclTeamComparison = false;
+  // ─── チェックボックス（削除3件・修正2件後の最終構成）──────────────
+  bool _inclPlayerStats = true;      // 選手別成績（サーブ+レシーブ+AI講評）
+  bool _inclServeRanking = true;     // サーブランキング
+  bool _inclReceiveRanking = true;   // サーブレシーブランキング
+  bool _inclPercentage = true;       // 割合（%）表示
+  bool _inclOpponentAnalysis = true; // 対戦相手別分析
+
+  // 対戦相手別分析の選択状態
+  String? _selectedOpponent;
 
   bool _isGenerating = false;
   String _statusMessage = '';
 
   @override
   Widget build(BuildContext context) {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    // 対戦相手一覧（試合から抽出・重複除去・ソート済み）
+    final opponents = provider.matches
+        .map((m) => m.opponent)
+        .toSet()
+        .toList()
+      ..sort();
+
     return Scaffold(
       backgroundColor: AppTheme.black,
       appBar: AppBar(
@@ -58,7 +67,8 @@ class _PrintScreenState extends State<PrintScreen> {
           children: [
             Icon(Icons.print, color: AppTheme.gold, size: 20),
             SizedBox(width: 8),
-            Text('印刷・PDF出力', style: TextStyle(color: AppTheme.gold, fontSize: 18)),
+            Text('印刷・PDF出力',
+                style: TextStyle(color: AppTheme.gold, fontSize: 18)),
           ],
         ),
       ),
@@ -70,33 +80,107 @@ class _PrintScreenState extends State<PrintScreen> {
               children: [
                 _buildSectionHeader('出力内容を選択', Icons.checklist),
                 const SizedBox(height: 12),
-                _buildCheckTile('試合別結果', '各試合のサーブ・レシーブ記録',
-                    Icons.sports_volleyball, _inclMatchResult,
-                    (v) => setState(() => _inclMatchResult = v)),
-                _buildCheckTile('選手別成績', '選手ごとの全集計データ',
-                    Icons.person, _inclPlayerStats,
-                    (v) => setState(() => _inclPlayerStats = v)),
-                _buildCheckTile('サーブランキング', 'エース率・崩し率・ミス率順位',
-                    Icons.military_tech, _inclServeRanking,
-                    (v) => setState(() => _inclServeRanking = v)),
-                _buildCheckTile('サーブレシーブランキング', 'オーバー率・ミス率順位',
-                    Icons.leaderboard, _inclReceiveRanking,
-                    (v) => setState(() => _inclReceiveRanking = v)),
-                _buildCheckTile('割合（%）表示', '各項目のパーセンテージ',
-                    Icons.percent, _inclPercentage,
-                    (v) => setState(() => _inclPercentage = v)),
-                _buildCheckTile('AI講評', '各選手のAI自動分析コメント',
-                    Icons.psychology, _inclAiComment,
-                    (v) => setState(() => _inclAiComment = v)),
-                _buildCheckTile('対戦相手別分析', '相手チームごとの成績比較',
-                    Icons.groups, _inclOpponentAnalysis,
-                    (v) => setState(() => _inclOpponentAnalysis = v)),
-                _buildCheckTile('期間集計', '選択した期間の集計データ',
-                    Icons.date_range, _inclPeriodSummary,
-                    (v) => setState(() => _inclPeriodSummary = v)),
-                _buildCheckTile('A/Bチーム比較', 'チーム間の成績比較',
-                    Icons.compare_arrows, _inclTeamComparison,
-                    (v) => setState(() => _inclTeamComparison = v)),
+
+                // 選手別成績（サーブ+レシーブ+AI講評 統合）
+                _buildCheckTile(
+                  '選手別成績',
+                  '選手ごとのサーブ・レシーブ統計とAI講評',
+                  Icons.person,
+                  _inclPlayerStats,
+                  (v) => setState(() => _inclPlayerStats = v),
+                ),
+
+                // サーブランキング
+                _buildCheckTile(
+                  'サーブランキング',
+                  'エース率・崩し率・ミス率順位',
+                  Icons.military_tech,
+                  _inclServeRanking,
+                  (v) => setState(() => _inclServeRanking = v),
+                ),
+
+                // サーブレシーブランキング
+                _buildCheckTile(
+                  'サーブレシーブランキング',
+                  'オーバー率・ミス率順位',
+                  Icons.leaderboard,
+                  _inclReceiveRanking,
+                  (v) => setState(() => _inclReceiveRanking = v),
+                ),
+
+                // 割合（%）表示
+                _buildCheckTile(
+                  '割合（%）表示',
+                  '各項目のパーセンテージ',
+                  Icons.percent,
+                  _inclPercentage,
+                  (v) => setState(() => _inclPercentage = v),
+                ),
+
+                // 対戦相手別分析（対戦相手選択UI付き）
+                _buildCheckTile(
+                  '対戦相手別分析',
+                  '選択した相手チームごとの成績',
+                  Icons.groups,
+                  _inclOpponentAnalysis,
+                  (v) => setState(() {
+                    _inclOpponentAnalysis = v;
+                    if (!v) _selectedOpponent = null;
+                  }),
+                ),
+
+                // 対戦相手選択ドロップダウン（_inclOpponentAnalysisがtrueの時のみ表示）
+                if (_inclOpponentAnalysis) ...[
+                  Container(
+                    margin: const EdgeInsets.only(left: 16, right: 8, bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.cardBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.primaryRed.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: opponents.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              '試合データがありません。先に試合を登録してください。',
+                              style: TextStyle(
+                                  color: AppTheme.grey, fontSize: 12),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8, bottom: 4),
+                                child: Text(
+                                  '対戦相手を選択（未選択=全対戦相手）',
+                                  style: TextStyle(
+                                      color: AppTheme.gold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: [
+                                  // 「全対戦相手」チップ
+                                  _opponentChip(null, opponents),
+                                  // 個別の対戦相手チップ
+                                  ...opponents.map(
+                                    (opp) => _opponentChip(opp, opponents),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                          ),
+                  ),
+                ],
+
                 const SizedBox(height: 20),
                 _buildSectionHeader('出力形式', Icons.picture_as_pdf),
                 const SizedBox(height: 12),
@@ -111,7 +195,8 @@ class _PrintScreenState extends State<PrintScreen> {
                     children: [
                       _infoRow(Icons.description, 'A4サイズ対応PDF'),
                       const SizedBox(height: 8),
-                      _infoRow(Icons.download, 'ダウンロード方式（Safari/Chrome対応）'),
+                      _infoRow(
+                          Icons.download, 'ダウンロード方式（Safari/Chrome対応）'),
                       const SizedBox(height: 8),
                       _infoRow(Icons.language, '日本語フォント（ローカル処理）'),
                       const SizedBox(height: 8),
@@ -137,7 +222,8 @@ class _PrintScreenState extends State<PrintScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(
                       _statusMessage,
-                      style: const TextStyle(color: AppTheme.gold, fontSize: 12),
+                      style: const TextStyle(
+                          color: AppTheme.gold, fontSize: 12),
                     ),
                   ),
                 Row(
@@ -148,7 +234,8 @@ class _PrintScreenState extends State<PrintScreen> {
                           backgroundColor: _isGenerating
                               ? AppTheme.primaryRed.withValues(alpha: 0.5)
                               : AppTheme.primaryRed,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10)),
                         ),
@@ -158,7 +245,8 @@ class _PrintScreenState extends State<PrintScreen> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                     color: Colors.white, strokeWidth: 2))
-                            : const Icon(Icons.download, color: Colors.white),
+                            : const Icon(Icons.download,
+                                color: Colors.white),
                         label: Text(
                           _isGenerating ? 'PDF生成中...' : 'PDFをダウンロード',
                           style: const TextStyle(
@@ -203,9 +291,8 @@ class _PrintScreenState extends State<PrintScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: value
-            ? AppTheme.primaryRed.withValues(alpha: 0.08)
-            : AppTheme.cardBg,
+        color:
+            value ? AppTheme.primaryRed.withValues(alpha: 0.08) : AppTheme.cardBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: value
@@ -225,12 +312,49 @@ class _PrintScreenState extends State<PrintScreen> {
                     value ? FontWeight.bold : FontWeight.normal,
                 fontSize: 14)),
         subtitle: Text(subtitle,
-            style: const TextStyle(color: AppTheme.grey, fontSize: 11)),
-        secondary:
-            Icon(icon, color: value ? AppTheme.primaryRed : AppTheme.grey, size: 20),
+            style:
+                const TextStyle(color: AppTheme.grey, fontSize: 11)),
+        secondary: Icon(icon,
+            color: value ? AppTheme.primaryRed : AppTheme.grey, size: 20),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  /// 対戦相手選択チップ
+  Widget _opponentChip(String? opponent, List<String> allOpponents) {
+    final isSelected = opponent == _selectedOpponent;
+    final label = opponent ?? '全対戦相手';
+    return GestureDetector(
+      onTap: () => setState(() {
+        _selectedOpponent = isSelected ? null : opponent;
+      }),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryRed
+              : AppTheme.cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryRed
+                : const Color(0xFF555555),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppTheme.lightGrey,
+            fontSize: 12,
+            fontWeight:
+                isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
@@ -241,7 +365,8 @@ class _PrintScreenState extends State<PrintScreen> {
         Icon(icon, color: AppTheme.gold, size: 16),
         const SizedBox(width: 10),
         Text(text,
-            style: const TextStyle(color: AppTheme.lightGrey, fontSize: 13)),
+            style: const TextStyle(
+                color: AppTheme.lightGrey, fontSize: 13)),
       ],
     );
   }
@@ -252,12 +377,6 @@ class _PrintScreenState extends State<PrintScreen> {
 
   // ─── PDF 生成メイン ─────────────────────────────────────────
 
-  /// ポイント：
-  ///   1. フォントはローカルTTF（144KB）を非同期ロード
-  ///   2. セクションデータはDartオブジェクトとして先に全部収集（同期・軽量）
-  ///   3. pw.Page（固定ページ）を1枚ずつaddPage → awaitでyield
-  ///   4. pdf.save() は非同期なので問題なし
-  ///   5. web.Blob + createObjectURL でダウンロード（iOS Safari対応）
   Future<void> _generatePdf() async {
     setState(() {
       _isGenerating = true;
@@ -273,11 +392,13 @@ class _PrintScreenState extends State<PrintScreen> {
       pw.Font regularFont;
       pw.Font boldFont;
       try {
-        final reg = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
+        final reg =
+            await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
         await Future.delayed(Duration.zero);
         regularFont = pw.Font.ttf(reg);
         await Future.delayed(Duration.zero);
-        final bld = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+        final bld =
+            await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
         await Future.delayed(Duration.zero);
         boldFont = pw.Font.ttf(bld);
         await Future.delayed(Duration.zero);
@@ -295,26 +416,24 @@ class _PrintScreenState extends State<PrintScreen> {
 
       final now = DateTime.now();
       final dateStr = DateFormat('yyyy/M/d').format(now);
-      final fileName =
-          '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
+      final fileName = '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
 
-      // ── Step 2: データ収集（Dartオブジェクト、純粋計算）──
+      // ── Step 2: データ収集 ──
       _setStatus('データ収集中...');
       await Future.delayed(Duration.zero);
 
-      final _PdfData data = _collectData(provider);
+      final data = _collectData(provider);
       await Future.delayed(Duration.zero);
 
       // ── Step 3: PDFドキュメント生成（1ページずつ addPage → yield）──
       final pdf = pw.Document();
       int pageIdx = 0;
-      final totalSections = _countSections();
+      final totalSections = _countSections(data);
 
-      // ページ追加ヘルパー（毎回yieldして画面更新を許可）
       Future<void> addOnePage(List<pw.Widget> widgets) async {
         pageIdx++;
         _setStatus('ページ生成中... ($pageIdx/$totalSections)');
-        await Future.delayed(Duration.zero); // ← UIに制御を返す
+        await Future.delayed(Duration.zero);
 
         pdf.addPage(
           pw.Page(
@@ -333,35 +452,36 @@ class _PrintScreenState extends State<PrintScreen> {
             ),
           ),
         );
-        await Future.delayed(Duration.zero); // ← addPage後もyield
+        await Future.delayed(Duration.zero);
       }
 
-      // 試合別結果
-      if (_inclMatchResult) {
-        await addOnePage([_buildMatchPage(data, theme)]);
-      }
-
-      // 選手別成績（選手数が多い場合は分割）
+      // ── 選手別成績（選手ごとに1ページ：サーブ＋レシーブ＋AI講評）──
       if (_inclPlayerStats) {
-        final chunks = _chunkPlayers(data.players, 10);
-        for (final chunk in chunks) {
-          await addOnePage([_buildPlayerPage(chunk, data, theme)]);
+        for (final player in data.players) {
+          await addOnePage([
+            _buildPlayerDetailPage(player, data, provider),
+          ]);
+        }
+        if (data.players.isEmpty) {
+          await addOnePage([
+            _buildPlayerDetailPage(null, data, provider),
+          ]);
         }
       }
 
-      // サーブランキング
+      // ── サーブランキング ──
       if (_inclServeRanking) {
-        await addOnePage([_buildServeRankPage(data, theme)]);
+        await addOnePage([_buildServeRankPage(data)]);
       }
 
-      // レシーブランキング
+      // ── サーブレシーブランキング ──
       if (_inclReceiveRanking) {
-        await addOnePage([_buildReceiveRankPage(data, theme)]);
+        await addOnePage([_buildReceiveRankPage(data)]);
       }
 
-      // A/Bチーム比較
-      if (_inclTeamComparison) {
-        await addOnePage([_buildTeamCompPage(data, theme)]);
+      // ── 対戦相手別分析 ──
+      if (_inclOpponentAnalysis) {
+        await addOnePage([_buildOpponentPage(data, provider)]);
       }
 
       // ── Step 4: バイト列に変換 ──
@@ -407,21 +527,20 @@ class _PrintScreenState extends State<PrintScreen> {
     }
   }
 
-  int _countSections() {
+  int _countSections(_PdfData data) {
     int n = 0;
-    if (_inclMatchResult) n++;
-    if (_inclPlayerStats) n++;
+    if (_inclPlayerStats) n += data.players.isEmpty ? 1 : data.players.length;
     if (_inclServeRanking) n++;
     if (_inclReceiveRanking) n++;
-    if (_inclTeamComparison) n++;
+    if (_inclOpponentAnalysis) n++;
     return n == 0 ? 1 : n;
   }
 
-  // ─── データ収集（純粋Dartオブジェクト） ──────────────────────
+  // ─── データ収集 ──────────────────────────────────────────────
 
   _PdfData _collectData(AppProvider provider) {
-    // stats画面と同じフィルタリングロジックを適用
-    List players;
+    // stats画面と同じフィルタリングロジック
+    List<Player> players;
     switch (widget.teamFilter) {
       case 'A':
         players = provider.teamAPlayers;
@@ -430,14 +549,21 @@ class _PrintScreenState extends State<PrintScreen> {
       default:
         players = provider.players;
     }
-    // 個別選手選択が有効な場合はさらに絞り込む
-    if (widget.selectedPlayerIds != null && widget.selectedPlayerIds!.isNotEmpty) {
-      players = players.where((p) => widget.selectedPlayerIds!.contains(p.id)).toList();
+    if (widget.selectedPlayerIds != null &&
+        widget.selectedPlayerIds!.isNotEmpty) {
+      players = players
+          .where((p) => widget.selectedPlayerIds!.contains(p.id))
+          .toList();
     }
 
-    final matches = provider.matches;
+    final allMatches = provider.matches;
 
-    // サーブ統計
+    // 対戦相手フィルター適用
+    final filteredMatches = _selectedOpponent != null
+        ? allMatches.where((m) => m.opponent == _selectedOpponent).toList()
+        : allMatches;
+
+    // サーブ統計（全試合分）
     final serveStats = <String, _ServeStats>{};
     for (final p in players) {
       final s = provider.getServeStatsByPlayer(p.id);
@@ -447,56 +573,233 @@ class _PrintScreenState extends State<PrintScreen> {
       final justIn = s[ServeResult.justIn] ?? 0;
       final miss = s[ServeResult.miss] ?? 0;
       serveStats[p.id] = _ServeStats(
-        total: total, ace: ace, under: under, justIn: justIn, miss: miss,
+        total: total,
+        ace: ace,
+        under: under,
+        justIn: justIn,
+        miss: miss,
       );
     }
 
-    // レシーブ統計
+    // レシーブ統計（全試合分）
     final recvStats = <String, _RecvStats>{};
     for (final p in players) {
       final s = provider.getReceiveStatsByPlayer(p.id);
       final total = s.values.fold(0, (a, b) => a + b);
       final over = s[ReceiveResult.over] ?? 0;
+      final under = s[ReceiveResult.under] ?? 0;
+      final direct = s[ReceiveResult.direct] ?? 0;
       final miss = s[ReceiveResult.miss] ?? 0;
-      recvStats[p.id] = _RecvStats(total: total, over: over, miss: miss);
+      recvStats[p.id] = _RecvStats(
+        total: total,
+        over: over,
+        under: under,
+        direct: direct,
+        miss: miss,
+      );
     }
 
     // 試合ごとのカウント
     final matchServe = <String, int>{};
     final matchRecv = <String, int>{};
-    for (final m in matches) {
+    for (final m in allMatches) {
       matchServe[m.id] = provider.getServeRecordsByMatch(m.id).length;
       matchRecv[m.id] = provider.getReceiveRecordsByMatch(m.id).length;
     }
 
+    // 対戦相手別の集計（選手ごと × 対戦相手ごと）
+    final opponentServe = <String, Map<String, _ServeStats>>{};
+    final opponentRecv = <String, Map<String, _RecvStats>>{};
+
+    for (final m in filteredMatches) {
+      final opp = m.opponent;
+      opponentServe[opp] ??= {};
+      opponentRecv[opp] ??= {};
+
+      for (final p in players) {
+        final sRecords = provider
+            .getServeRecordsByMatch(m.id)
+            .where((r) => r.playerId == p.id)
+            .toList();
+        final rRecords = provider
+            .getReceiveRecordsByMatch(m.id)
+            .where((r) => r.playerId == p.id)
+            .toList();
+
+        // サーブ集計
+        final prevS = opponentServe[opp]![p.id];
+        int sAce = (prevS?.ace ?? 0);
+        int sUnder = (prevS?.under ?? 0);
+        int sJustIn = (prevS?.justIn ?? 0);
+        int sMiss = (prevS?.miss ?? 0);
+        for (final r in sRecords) {
+          switch (r.result) {
+            case ServeResult.ace:
+              sAce++;
+            case ServeResult.under:
+              sUnder++;
+            case ServeResult.justIn:
+              sJustIn++;
+            case ServeResult.miss:
+              sMiss++;
+          }
+        }
+        opponentServe[opp]![p.id] = _ServeStats(
+          total: sAce + sUnder + sJustIn + sMiss,
+          ace: sAce,
+          under: sUnder,
+          justIn: sJustIn,
+          miss: sMiss,
+        );
+
+        // レシーブ集計
+        final prevR = opponentRecv[opp]![p.id];
+        int rOver = (prevR?.over ?? 0);
+        int rUnder = (prevR?.under ?? 0);
+        int rDirect = (prevR?.direct ?? 0);
+        int rMiss = (prevR?.miss ?? 0);
+        for (final r in rRecords) {
+          switch (r.result) {
+            case ReceiveResult.over:
+              rOver++;
+            case ReceiveResult.under:
+              rUnder++;
+            case ReceiveResult.direct:
+              rDirect++;
+            case ReceiveResult.miss:
+              rMiss++;
+          }
+        }
+        opponentRecv[opp]![p.id] = _RecvStats(
+          total: rOver + rUnder + rDirect + rMiss,
+          over: rOver,
+          under: rUnder,
+          direct: rDirect,
+          miss: rMiss,
+        );
+      }
+    }
+
     return _PdfData(
       players: players,
-      matches: matches,
+      allMatches: allMatches,
+      filteredMatches: filteredMatches,
       serveStats: serveStats,
       recvStats: recvStats,
       matchServe: matchServe,
       matchRecv: matchRecv,
-      teamA: provider.teamAPlayers,
-      teamB: provider.teamBPlayers,
+      opponentServe: opponentServe,
+      opponentRecv: opponentRecv,
+      selectedOpponent: _selectedOpponent,
     );
   }
 
-  List<List<dynamic>> _chunkPlayers(List players, int size) {
-    final result = <List<dynamic>>[];
-    for (int i = 0; i < players.length; i += size) {
-      result.add(players.sublist(i, (i + size).clamp(0, players.length)));
+  // ─── AI講評生成（純粋計算） ──────────────────────────────────
+
+  String _generateAiComment(
+    Player player,
+    Map<ServeResult, int> serveStats,
+    Map<ReceiveResult, int> receiveStats,
+  ) {
+    final total = serveStats.values.fold(0, (a, b) => a + b);
+    final rTotal = receiveStats.values.fold(0, (a, b) => a + b);
+
+    if (total == 0 && rTotal == 0) {
+      return '${player.name}選手のデータがまだありません。試合での記録を蓄積してください。';
     }
-    if (result.isEmpty) result.add([]);
-    return result;
+
+    final List<String> comments = [];
+
+    // サーブ分析
+    if (total > 0) {
+      final aceRate = (serveStats[ServeResult.ace] ?? 0) / total * 100;
+      final underRate = (serveStats[ServeResult.under] ?? 0) / total * 100;
+      final missRate = (serveStats[ServeResult.miss] ?? 0) / total * 100;
+      final efficiency =
+          ((serveStats[ServeResult.ace] ?? 0) - (serveStats[ServeResult.miss] ?? 0)) /
+              total *
+              100;
+
+      if (aceRate >= 20) {
+        comments.add(
+            '【サーブの特徴】エース率${aceRate.toStringAsFixed(1)}%と非常に高く、相手チームにとって大きな脅威です。');
+      } else if (aceRate >= 10) {
+        comments.add(
+            '【サーブの特徴】エース率${aceRate.toStringAsFixed(1)}%は安定した水準です。さらなる向上を目指しましょう。');
+      } else if (aceRate < 5 && total >= 5) {
+        comments.add(
+            '【サーブの特徴】エース率${aceRate.toStringAsFixed(1)}%はやや低めです。サーブコースの多様化を練習しましょう。');
+      }
+
+      if (underRate >= 35) {
+        comments.add(
+            '【崩し能力】崩し率${underRate.toStringAsFixed(1)}%と高く、相手の攻撃を制限する効果的なサーブができています。');
+      } else if (underRate < 20 && total >= 5) {
+        comments.add(
+            '【崩し能力】崩し率${underRate.toStringAsFixed(1)}%はまだ改善の余地があります。コースを狙ったサーブを意識しましょう。');
+      }
+
+      if (missRate >= 20) {
+        comments.add(
+            '【改善ポイント】ミス率${missRate.toStringAsFixed(1)}%は高めです。強打とコントロールのバランスを見直し、安定性を高めることが優先課題です。');
+      } else if (missRate <= 5 && total >= 5) {
+        comments.add(
+            '【安定性】ミス率${missRate.toStringAsFixed(1)}%と非常に安定したサーブを打てています。この安定性は試合で大きな武器になります。');
+      }
+
+      if (efficiency >= 10) {
+        comments.add(
+            '【サーブ効率】効率スコア${efficiency.toStringAsFixed(1)}%と優秀です。チームへの貢献度が高い選手です。');
+      } else if (efficiency < 0) {
+        comments.add('【サーブ効率】現在サーブ効率がマイナスです。まずミスを減らすことを意識しましょう。');
+      }
+
+      final suggestions = <String>[];
+      if (missRate >= 15) suggestions.add('入れることを優先した基礎練習');
+      if (aceRate < 8) suggestions.add('コース狙いの練習（ライン際・ショートサーブ）');
+      if (underRate < 25) suggestions.add('相手レシーバーを動かすサーブコース練習');
+      if (suggestions.isNotEmpty) {
+        comments.add('【練習提案】${suggestions.join('、')}を重点的に行うことをお勧めします。');
+      }
+    }
+
+    // レシーブ分析
+    if (rTotal > 0) {
+      final overRate = (receiveStats[ReceiveResult.over] ?? 0) / rTotal * 100;
+      final missRate = (receiveStats[ReceiveResult.miss] ?? 0) / rTotal * 100;
+
+      if (overRate >= 50) {
+        comments.add(
+            '【レシーブ安定性】オーバーパス率${overRate.toStringAsFixed(1)}%と安定したレシーブができています。攻撃につながる質の高いパスです。');
+      } else if (overRate >= 30) {
+        comments.add(
+            '【レシーブ安定性】オーバーパス率${overRate.toStringAsFixed(1)}%は平均的な水準です。さらに向上できるよう練習を続けましょう。');
+      }
+
+      if (missRate >= 20) {
+        comments.add(
+            '【レシーブ改善】レシーブミス率${missRate.toStringAsFixed(1)}%です。落下点への移動を素早く行う練習が効果的です。');
+      } else if (missRate <= 5 && rTotal >= 5) {
+        comments.add(
+            '【レシーブ安定性】ミス率${missRate.toStringAsFixed(1)}%と非常に安定しています。チームの守備の要として活躍できます。');
+      }
+    }
+
+    if (comments.isEmpty) {
+      return '${player.name}選手のデータを分析中です（$total回サーブ、$rTotal回レシーブ）。引き続き記録を続けてください。';
+    }
+
+    return comments.join('\n');
   }
 
-  // ─── PDFページ構築（pw.Widget返し） ───────────────────────────
+  // ─── PDFページ構築 ────────────────────────────────────────────
 
   pw.Widget _pdfHeader(String dateStr) {
     return pw.Container(
       padding: const pw.EdgeInsets.only(bottom: 8),
       decoration: const pw.BoxDecoration(
-        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.red800, width: 2)),
+        border: pw.Border(
+            bottom: pw.BorderSide(color: PdfColors.red800, width: 2)),
       ),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -510,11 +813,13 @@ class _PrintScreenState extends State<PrintScreen> {
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.red900)),
               pw.Text('この一本、この一点',
-                  style: pw.TextStyle(fontSize: 9, color: PdfColors.amber800)),
+                  style:
+                      pw.TextStyle(fontSize: 9, color: PdfColors.amber800)),
             ],
           ),
           pw.Text(dateStr,
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey)),
+              style:
+                  const pw.TextStyle(fontSize: 9, color: PdfColors.grey)),
         ],
       ),
     );
@@ -524,14 +829,17 @@ class _PrintScreenState extends State<PrintScreen> {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 6),
       decoration: const pw.BoxDecoration(
-          border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300))),
+          border: pw.Border(
+              top: pw.BorderSide(color: PdfColors.grey300))),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text('藤橋JVC男子 バレーボール分析アプリ',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              style:
+                  const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
           pw.Text('- $pageNum -',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
+              style:
+                  const pw.TextStyle(fontSize: 7, color: PdfColors.grey)),
         ],
       ),
     );
@@ -543,11 +851,14 @@ class _PrintScreenState extends State<PrintScreen> {
       margin: const pw.EdgeInsets.only(bottom: 6),
       decoration: const pw.BoxDecoration(
         color: PdfColors.red50,
-        border: pw.Border(left: pw.BorderSide(color: PdfColors.red800, width: 3)),
+        border: pw.Border(
+            left: pw.BorderSide(color: PdfColors.red800, width: 3)),
       ),
       child: pw.Text(title,
           style: pw.TextStyle(
-              fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.red900)),
     );
   }
 
@@ -555,7 +866,9 @@ class _PrintScreenState extends State<PrintScreen> {
         padding: const pw.EdgeInsets.all(4),
         child: pw.Text(t,
             style: pw.TextStyle(
-                fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                fontSize: 8,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white),
             textAlign: pw.TextAlign.center),
       );
 
@@ -564,89 +877,189 @@ class _PrintScreenState extends State<PrintScreen> {
         child: pw.Text(t,
             style: pw.TextStyle(
                 fontSize: 8,
-                color: highlight ? PdfColors.red900 : PdfColors.black,
-                fontWeight: highlight ? pw.FontWeight.bold : pw.FontWeight.normal),
+                color:
+                    highlight ? PdfColors.red900 : PdfColors.black,
+                fontWeight: highlight
+                    ? pw.FontWeight.bold
+                    : pw.FontWeight.normal),
             textAlign: pw.TextAlign.center),
       );
 
-  // 試合別結果ページ
-  pw.Widget _buildMatchPage(_PdfData data, pw.ThemeData theme) {
+  // ── 選手別成績ページ（1選手ごと：サーブ+レシーブ+AI講評） ──────
+  pw.Widget _buildPlayerDetailPage(
+    Player? player,
+    _PdfData data,
+    AppProvider provider,
+  ) {
+    if (player == null || data.players.isEmpty) {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('選手別成績'),
+          pw.Text('選手データがありません。',
+              style: const pw.TextStyle(
+                  color: PdfColors.grey, fontSize: 10)),
+        ],
+      );
+    }
+
+    final s = data.serveStats[player.id] ??
+        _ServeStats(total: 0, ace: 0, under: 0, justIn: 0, miss: 0);
+    final r = data.recvStats[player.id] ??
+        _RecvStats(total: 0, over: 0, under: 0, direct: 0, miss: 0);
+
+    // サーブ率計算
+    String pct(int n, int total) =>
+        total > 0 ? '${(n / total * 100).toStringAsFixed(1)}%' : '-';
+
+    // AI講評生成（providerから統計を取得して生成）
+    final serveMap = provider.getServeStatsByPlayer(player.id);
+    final recvMap = provider.getReceiveStatsByPlayer(player.id);
+    final aiComment = _generateAiComment(player, serveMap, recvMap);
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _sectionTitle('試合別結果'),
-        if (data.matches.isEmpty)
-          pw.Text('試合データなし',
-              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
-        else
-          pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        // 選手名ヘッダー
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          margin: const pw.EdgeInsets.only(bottom: 10),
+          decoration: const pw.BoxDecoration(
+            color: PdfColors.red900,
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+          ),
+          child: pw.Row(
             children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.red900),
-                children: [
-                  _th('日付'), _th('チーム'), _th('対戦相手'),
-                  _th('サーブ数'), _th('レシーブ数'),
-                ],
+              pw.Text(
+                player.number.isNotEmpty ? '#${player.number}  ' : '',
+                style: pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.amber200,
+                    fontWeight: pw.FontWeight.bold),
               ),
-              ...data.matches.map((m) => pw.TableRow(
-                    children: [
-                      _td(DateFormat('M/d').format(m.date)),
-                      _td(m.team),
-                      _td(m.opponent),
-                      _td('${data.matchServe[m.id] ?? 0}'),
-                      _td('${data.matchRecv[m.id] ?? 0}'),
-                    ],
-                  )),
+              pw.Text(
+                player.name,
+                style: pw.TextStyle(
+                    fontSize: 13,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white),
+              ),
+              pw.Spacer(),
+              pw.Text(
+                '${player.team}チーム',
+                style: const pw.TextStyle(
+                    fontSize: 9, color: PdfColors.amber100),
+              ),
             ],
           ),
-      ],
-    );
-  }
+        ),
 
-  // 選手別成績ページ（chunk単位）
-  pw.Widget _buildPlayerPage(
-      List chunk, _PdfData data, pw.ThemeData theme) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        _sectionTitle('選手別成績'),
+        // サーブ統計テーブル
+        _sectionTitle('サーブ成績'),
         pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          border: pw.TableBorder.all(
+              color: PdfColors.grey300, width: 0.5),
           children: [
             pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.red900),
+              decoration:
+                  const pw.BoxDecoration(color: PdfColors.red900),
               children: [
-                _th('選手名'), _th('チーム'),
-                _th('エース'), _th('崩し'), _th('入り'), _th('ミス'), _th('計'),
+                _th('サーブ数'),
+                _th('エース'),
+                _th('崩し'),
+                _th('入り'),
+                _th('ミス'),
                 if (_inclPercentage) _th('エース率'),
+                if (_inclPercentage) _th('崩し率'),
                 if (_inclPercentage) _th('ミス率'),
               ],
             ),
-            ...chunk.map((p) {
-              final s = data.serveStats[p.id]!;
-              final aceR = s.total > 0
-                  ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
-                  : '-';
-              final missR = s.total > 0
-                  ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
-                  : '-';
-              return pw.TableRow(children: [
-                _td(p.name), _td(p.team),
-                _td('${s.ace}'), _td('${s.under}'),
-                _td('${s.justIn}'), _td('${s.miss}'), _td('${s.total}'),
-                if (_inclPercentage) _td(aceR),
-                if (_inclPercentage) _td(missR),
-              ]);
-            }),
+            pw.TableRow(children: [
+              _td('${s.total}'),
+              _td('${s.ace}', highlight: s.total > 0 && s.ace / s.total >= 0.15),
+              _td('${s.under}'),
+              _td('${s.justIn}'),
+              _td('${s.miss}'),
+              if (_inclPercentage)
+                _td(pct(s.ace, s.total), highlight: s.total > 0 && s.ace / s.total >= 0.15),
+              if (_inclPercentage) _td(pct(s.under, s.total)),
+              if (_inclPercentage) _td(pct(s.miss, s.total)),
+            ]),
           ],
+        ),
+
+        pw.SizedBox(height: 10),
+
+        // レシーブ統計テーブル
+        _sectionTitle('レシーブ成績'),
+        pw.Table(
+          border: pw.TableBorder.all(
+              color: PdfColors.grey300, width: 0.5),
+          children: [
+            pw.TableRow(
+              decoration:
+                  const pw.BoxDecoration(color: PdfColors.red900),
+              children: [
+                _th('レシーブ数'),
+                _th('オーバー'),
+                _th('アンダー'),
+                _th('ダイレクト'),
+                _th('ミス'),
+                if (_inclPercentage) _th('オーバー率'),
+                if (_inclPercentage) _th('ミス率'),
+              ],
+            ),
+            pw.TableRow(children: [
+              _td('${r.total}'),
+              _td('${r.over}', highlight: r.total > 0 && r.over / r.total >= 0.5),
+              _td('${r.under}'),
+              _td('${r.direct}'),
+              _td('${r.miss}'),
+              if (_inclPercentage)
+                _td(pct(r.over, r.total), highlight: r.total > 0 && r.over / r.total >= 0.5),
+              if (_inclPercentage) _td(pct(r.miss, r.total)),
+            ]),
+          ],
+        ),
+
+        pw.SizedBox(height: 10),
+
+        // AI講評
+        pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.amber50,
+            border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
+            borderRadius:
+                const pw.BorderRadius.all(pw.Radius.circular(4)),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                children: [
+                  pw.Text('AI講評',
+                      style: pw.TextStyle(
+                          fontSize: 9,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.amber900)),
+                ],
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                aiComment,
+                style: const pw.TextStyle(
+                    fontSize: 8.5, color: PdfColors.grey800),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  // サーブランキングページ
-  pw.Widget _buildServeRankPage(_PdfData data, pw.ThemeData theme) {
+  // ── サーブランキングページ ──────────────────────────────────────
+  pw.Widget _buildServeRankPage(_PdfData data) {
     final ranked = data.players
         .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0)
         .toList()
@@ -664,34 +1077,53 @@ class _PrintScreenState extends State<PrintScreen> {
         _sectionTitle('サーブランキング（エース率順）'),
         if (ranked.isEmpty)
           pw.Text('データなし',
-              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
+              style: const pw.TextStyle(
+                  color: PdfColors.grey, fontSize: 10))
         else
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            border: pw.TableBorder.all(
+                color: PdfColors.grey300, width: 0.5),
             children: [
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.red900),
+                decoration:
+                    const pw.BoxDecoration(color: PdfColors.red900),
                 children: [
-                  _th('順位'), _th('選手名'), _th('サーブ数'),
-                  _th('エース率'), _th('ミス率'),
+                  _th('順位'),
+                  _th('選手名'),
+                  _th('チーム'),
+                  _th('サーブ数'),
+                  _th('エース'),
+                  _th('崩し'),
+                  _th('ミス'),
+                  if (_inclPercentage) _th('エース率'),
+                  if (_inclPercentage) _th('ミス率'),
                 ],
               ),
               ...ranked.asMap().entries.map((e) {
                 final idx = e.key;
                 final p = e.value;
                 final s = data.serveStats[p.id]!;
-                final aceR =
-                    s.total > 0 ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%' : '-';
-                final missR =
-                    s.total > 0 ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%' : '-';
+                final aceR = s.total > 0
+                    ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
+                final missR = s.total > 0
+                    ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
                 return pw.TableRow(
                   decoration: idx == 0
                       ? const pw.BoxDecoration(color: PdfColors.amber50)
                       : null,
                   children: [
-                    _td('${idx + 1}位'), _td(p.name),
-                    _td('${s.total}本'), _td(aceR, highlight: idx == 0),
-                    _td(missR),
+                    _td('${idx + 1}位'),
+                    _td(p.name),
+                    _td(p.team),
+                    _td('${s.total}'),
+                    _td('${s.ace}', highlight: idx == 0),
+                    _td('${s.under}'),
+                    _td('${s.miss}'),
+                    if (_inclPercentage)
+                      _td(aceR, highlight: idx == 0),
+                    if (_inclPercentage) _td(missR),
                   ],
                 );
               }),
@@ -701,8 +1133,8 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  // レシーブランキングページ
-  pw.Widget _buildReceiveRankPage(_PdfData data, pw.ThemeData theme) {
+  // ── レシーブランキングページ ────────────────────────────────────
+  pw.Widget _buildReceiveRankPage(_PdfData data) {
     final ranked = data.players
         .where((p) => (data.recvStats[p.id]?.total ?? 0) > 0)
         .toList()
@@ -717,37 +1149,56 @@ class _PrintScreenState extends State<PrintScreen> {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _sectionTitle('レシーブランキング（オーバー率順）'),
+        _sectionTitle('サーブレシーブランキング（オーバー率順）'),
         if (ranked.isEmpty)
           pw.Text('データなし',
-              style: const pw.TextStyle(color: PdfColors.grey, fontSize: 10))
+              style: const pw.TextStyle(
+                  color: PdfColors.grey, fontSize: 10))
         else
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            border: pw.TableBorder.all(
+                color: PdfColors.grey300, width: 0.5),
             children: [
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.red900),
+                decoration:
+                    const pw.BoxDecoration(color: PdfColors.red900),
                 children: [
-                  _th('順位'), _th('選手名'), _th('レシーブ数'),
-                  _th('オーバー率'), _th('ミス率'),
+                  _th('順位'),
+                  _th('選手名'),
+                  _th('チーム'),
+                  _th('レシーブ数'),
+                  _th('オーバー'),
+                  _th('アンダー'),
+                  _th('ミス'),
+                  if (_inclPercentage) _th('オーバー率'),
+                  if (_inclPercentage) _th('ミス率'),
                 ],
               ),
               ...ranked.asMap().entries.map((e) {
                 final idx = e.key;
                 final p = e.value;
                 final s = data.recvStats[p.id]!;
-                final ovR =
-                    s.total > 0 ? '${(s.over / s.total * 100).toStringAsFixed(1)}%' : '-';
-                final missR =
-                    s.total > 0 ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%' : '-';
+                final ovR = s.total > 0
+                    ? '${(s.over / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
+                final missR = s.total > 0
+                    ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
                 return pw.TableRow(
                   decoration: idx == 0
                       ? const pw.BoxDecoration(color: PdfColors.amber50)
                       : null,
                   children: [
-                    _td('${idx + 1}位'), _td(p.name),
-                    _td('${s.total}本'), _td(ovR, highlight: idx == 0),
-                    _td(missR),
+                    _td('${idx + 1}位'),
+                    _td(p.name),
+                    _td(p.team),
+                    _td('${s.total}'),
+                    _td('${s.over}', highlight: idx == 0),
+                    _td('${s.under}'),
+                    _td('${s.miss}'),
+                    if (_inclPercentage)
+                      _td(ovR, highlight: idx == 0),
+                    if (_inclPercentage) _td(missR),
                   ],
                 );
               }),
@@ -757,44 +1208,127 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  // A/Bチーム比較ページ
-  pw.Widget _buildTeamCompPage(_PdfData data, pw.ThemeData theme) {
-    int sumStat(List players, int Function(_ServeStats) fn) =>
-        players.fold(0, (s, p) => s + fn(data.serveStats[p.id]!));
+  // ── 対戦相手別分析ページ ────────────────────────────────────────
+  pw.Widget _buildOpponentPage(_PdfData data, AppProvider provider) {
+    final opponents = data.opponentServe.keys.toList()..sort();
+    final targetLabel = data.selectedOpponent ?? '全対戦相手';
 
-    final aTotal = sumStat(data.teamA, (s) => s.total);
-    final bTotal = sumStat(data.teamB, (s) => s.total);
-    final aAce = aTotal > 0 ? sumStat(data.teamA, (s) => s.ace) / aTotal * 100 : 0.0;
-    final bAce = bTotal > 0 ? sumStat(data.teamB, (s) => s.ace) / bTotal * 100 : 0.0;
-    final aMiss = aTotal > 0 ? sumStat(data.teamA, (s) => s.miss) / aTotal * 100 : 0.0;
-    final bMiss = bTotal > 0 ? sumStat(data.teamB, (s) => s.miss) / bTotal * 100 : 0.0;
+    if (data.filteredMatches.isEmpty) {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('対戦相手別分析（$targetLabel）'),
+          pw.Text('試合データがありません。',
+              style: const pw.TextStyle(
+                  color: PdfColors.grey, fontSize: 10)),
+        ],
+      );
+    }
+
+    // 表示する対戦相手一覧
+    final displayOpponents =
+        data.selectedOpponent != null ? [data.selectedOpponent!] : opponents;
+
+    final List<pw.Widget> tables = [];
+    for (final opp in displayOpponents) {
+      final oppServe = data.opponentServe[opp] ?? {};
+      final oppRecv = data.opponentRecv[opp] ?? {};
+      final matchCount = data.filteredMatches
+          .where((m) => m.opponent == opp)
+          .length;
+
+      tables.add(pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            margin: const pw.EdgeInsets.only(bottom: 4),
+            decoration: const pw.BoxDecoration(
+              color: PdfColors.grey200,
+              border: pw.Border(
+                  left: pw.BorderSide(
+                      color: PdfColors.red700, width: 2)),
+            ),
+            child: pw.Text(
+              '対戦相手: $opp  （$matchCount試合）',
+              style: pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.red900),
+            ),
+          ),
+          pw.Table(
+            border: pw.TableBorder.all(
+                color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration:
+                    const pw.BoxDecoration(color: PdfColors.red900),
+                children: [
+                  _th('選手名'),
+                  _th('サーブ'),
+                  _th('エース'),
+                  _th('崩し'),
+                  _th('ミス'),
+                  if (_inclPercentage) _th('エース率'),
+                  _th('レシーブ'),
+                  _th('オーバー'),
+                  _th('ミス'),
+                  if (_inclPercentage) _th('オーバー率'),
+                ],
+              ),
+              ...data.players.map((p) {
+                final s = oppServe[p.id] ??
+                    _ServeStats(
+                        total: 0,
+                        ace: 0,
+                        under: 0,
+                        justIn: 0,
+                        miss: 0);
+                final r = oppRecv[p.id] ??
+                    _RecvStats(
+                        total: 0,
+                        over: 0,
+                        under: 0,
+                        direct: 0,
+                        miss: 0);
+                final aceR = s.total > 0
+                    ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
+                final ovR = r.total > 0
+                    ? '${(r.over / r.total * 100).toStringAsFixed(1)}%'
+                    : '-';
+                return pw.TableRow(children: [
+                  _td(p.name),
+                  _td('${s.total}'),
+                  _td('${s.ace}'),
+                  _td('${s.under}'),
+                  _td('${s.miss}'),
+                  if (_inclPercentage) _td(aceR),
+                  _td('${r.total}'),
+                  _td('${r.over}'),
+                  _td('${r.miss}'),
+                  if (_inclPercentage) _td(ovR),
+                ]);
+              }),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+        ],
+      ));
+    }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        _sectionTitle('A/Bチーム比較'),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.red900),
-              children: [_th(''), _th('Aチーム'), _th('Bチーム')],
-            ),
-            pw.TableRow(children: [
-              _td('サーブ総数'), _td('$aTotal'), _td('$bTotal')
-            ]),
-            pw.TableRow(children: [
-              _td('エース率'),
-              _td('${aAce.toStringAsFixed(1)}%', highlight: aAce > bAce),
-              _td('${bAce.toStringAsFixed(1)}%', highlight: bAce > aAce),
-            ]),
-            pw.TableRow(children: [
-              _td('ミス率'),
-              _td('${aMiss.toStringAsFixed(1)}%'),
-              _td('${bMiss.toStringAsFixed(1)}%'),
-            ]),
-          ],
-        ),
+        _sectionTitle('対戦相手別分析（$targetLabel）'),
+        if (tables.isEmpty)
+          pw.Text('対戦相手データなし',
+              style: const pw.TextStyle(
+                  color: PdfColors.grey, fontSize: 10))
+        else
+          ...tables,
       ],
     );
   }
@@ -810,7 +1344,8 @@ class _PrintScreenState extends State<PrintScreen> {
       web.BlobPropertyBag(type: 'application/pdf'),
     );
     final url = web.URL.createObjectURL(blob);
-    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    final anchor =
+        web.document.createElement('a') as web.HTMLAnchorElement;
     anchor.href = url;
     anchor.download = fileName;
     anchor.style.display = 'none';
@@ -823,27 +1358,32 @@ class _PrintScreenState extends State<PrintScreen> {
   }
 }
 
-// ─── データクラス（軽量Dartオブジェクト） ──────────────────────────
+// ─── データクラス ─────────────────────────────────────────────────
 
 class _PdfData {
-  final List players;
-  final List matches;
+  final List<Player> players;
+  final List allMatches;
+  final List filteredMatches;
   final Map<String, _ServeStats> serveStats;
   final Map<String, _RecvStats> recvStats;
   final Map<String, int> matchServe;
   final Map<String, int> matchRecv;
-  final List teamA;
-  final List teamB;
+  // 対戦相手別：opponent -> playerId -> stats
+  final Map<String, Map<String, _ServeStats>> opponentServe;
+  final Map<String, Map<String, _RecvStats>> opponentRecv;
+  final String? selectedOpponent;
 
   const _PdfData({
     required this.players,
-    required this.matches,
+    required this.allMatches,
+    required this.filteredMatches,
     required this.serveStats,
     required this.recvStats,
     required this.matchServe,
     required this.matchRecv,
-    required this.teamA,
-    required this.teamB,
+    required this.opponentServe,
+    required this.opponentRecv,
+    required this.selectedOpponent,
   });
 }
 
@@ -859,10 +1399,12 @@ class _ServeStats {
 }
 
 class _RecvStats {
-  final int total, over, miss;
+  final int total, over, under, direct, miss;
   const _RecvStats({
     required this.total,
     required this.over,
+    required this.under,
+    required this.direct,
     required this.miss,
   });
 }
