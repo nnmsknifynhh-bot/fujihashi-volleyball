@@ -733,7 +733,7 @@ class _PrintScreenState extends State<PrintScreen> {
 
       if (underRate >= 35) {
         comments.add(
-            '【崩し能力】崩し率${underRate.toStringAsFixed(1)}%と高く、相手の攻撃を制限する効果的なサーブができています。');
+            '【崩し能力】崩し率${underRate.toStringAsFixed(1)}%と高く、相手の攻撃を制限するサーブができています。');
       } else if (underRate < 20 && total >= 5) {
         comments.add(
             '【崩し能力】崩し率${underRate.toStringAsFixed(1)}%はまだ改善の余地があります。コースを狙ったサーブを意識しましょう。');
@@ -749,9 +749,9 @@ class _PrintScreenState extends State<PrintScreen> {
 
       if (efficiency >= 10) {
         comments.add(
-            '【サーブ効率】効率スコア${efficiency.toStringAsFixed(1)}%と優秀です。チームへの貢献度が高い選手です。');
+            '【サーブ成績】サーブスコア${efficiency.toStringAsFixed(1)}%と優秀です。チームへの貢献度が高い選手です。');
       } else if (efficiency < 0) {
-        comments.add('【サーブ効率】現在サーブ効率がマイナスです。まずミスを減らすことを意識しましょう。');
+        comments.add('【サーブ成績】現在サーブスコアがマイナスです。まずミスを減らすことを意識しましょう。');
       }
 
       final suggestions = <String>[];
@@ -778,7 +778,7 @@ class _PrintScreenState extends State<PrintScreen> {
 
       if (missRate >= 20) {
         comments.add(
-            '【レシーブ改善】レシーブミス率${missRate.toStringAsFixed(1)}%です。落下点への移動を素早く行う練習が効果的です。');
+            '【レシーブ改善】レシーブミス率${missRate.toStringAsFixed(1)}%です。落下点への移動を素早く行う練習が大切です。');
       } else if (missRate <= 5 && rTotal >= 5) {
         comments.add(
             '【レシーブ安定性】ミス率${missRate.toStringAsFixed(1)}%と非常に安定しています。チームの守備の要として活躍できます。');
@@ -789,7 +789,7 @@ class _PrintScreenState extends State<PrintScreen> {
       return '${player.name}選手のデータを分析中です（$total回サーブ、$rTotal回レシーブ）。引き続き記録を続けてください。';
     }
 
-    return comments.join('\n');
+    return comments.join('\n\n');
   }
 
   // ─── PDFページ構築 ────────────────────────────────────────────
@@ -885,7 +885,7 @@ class _PrintScreenState extends State<PrintScreen> {
             textAlign: pw.TextAlign.center),
       );
 
-  // ── 選手別成績ページ（1選手ごと：サーブ+レシーブ+AI講評） ──────
+  // ── 選手別成績ページ（1選手ごと：サーブ+レシーブ+ランキング+AI講評） ──────
   pw.Widget _buildPlayerDetailPage(
     Player? player,
     _PdfData data,
@@ -908,9 +908,147 @@ class _PrintScreenState extends State<PrintScreen> {
     final r = data.recvStats[player.id] ??
         _RecvStats(total: 0, over: 0, under: 0, direct: 0, miss: 0);
 
-    // サーブ率計算
+    // パーセント表示ヘルパー
     String pct(int n, int total) =>
         total > 0 ? '${(n / total * 100).toStringAsFixed(1)}%' : '-';
+
+    // ── ランキング計算（3指標：サーブ効率・サービスミス率・サーブレシーブ率）──
+    final activePlayers = data.players
+        .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0 ||
+            (data.recvStats[p.id]?.total ?? 0) > 0)
+        .toList();
+    // totalCount は今後の拡張用（現在未使用）
+    // final totalCount = activePlayers.length;
+
+    // サーブ効率ランキング（(エース-ミス)/総数 の高い順）
+    final serveEffRanked = activePlayers
+        .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final sa = data.serveStats[a.id]!;
+        final sb = data.serveStats[b.id]!;
+        final effA = (sa.ace - sa.miss) / sa.total;
+        final effB = (sb.ace - sb.miss) / sb.total;
+        return effB.compareTo(effA);
+      });
+    final serveEffRank = serveEffRanked.indexWhere((p) => p.id == player.id);
+    final serveEff = s.total > 0
+        ? '${((s.ace - s.miss) / s.total * 100).toStringAsFixed(1)}%'
+        : '-';
+
+    // サービスミス率ランキング（低い順 = 良い順）
+    final serveMissRanked = activePlayers
+        .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final sa = data.serveStats[a.id]!;
+        final sb = data.serveStats[b.id]!;
+        final mA = sa.miss / sa.total;
+        final mB = sb.miss / sb.total;
+        return mA.compareTo(mB); // 低い順
+      });
+    final serveMissRank = serveMissRanked.indexWhere((p) => p.id == player.id);
+    final serveMissPct = pct(s.miss, s.total);
+
+    // サーブレシーブ率ランキング（オーバー率の高い順）
+    final recvRanked = activePlayers
+        .where((p) => (data.recvStats[p.id]?.total ?? 0) > 0)
+        .toList()
+      ..sort((a, b) {
+        final ra = data.recvStats[a.id]!;
+        final rb = data.recvStats[b.id]!;
+        final ovA = ra.over / ra.total;
+        final ovB = rb.over / rb.total;
+        return ovB.compareTo(ovA);
+      });
+    final recvRank = recvRanked.indexWhere((p) => p.id == player.id);
+    final recvPct = pct(r.over, r.total);
+    final recvCount = recvRanked.length;
+    final serveEffCount = serveEffRanked.length;
+    final serveMissCount = serveMissRanked.length;
+
+    // ランキングバッジウィジェット
+    pw.Widget rankBadge(String label, int rank, int count, String valueStr) {
+      if (rank < 0 || count == 0) {
+        return pw.Container(
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(label,
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
+                  textAlign: pw.TextAlign.center),
+              pw.SizedBox(height: 4),
+              pw.Text('データなし',
+                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey),
+                  textAlign: pw.TextAlign.center),
+            ],
+          ),
+        );
+      }
+      final rankNum = rank + 1;
+      final PdfColor badgeColor = rankNum == 1
+          ? PdfColors.amber700
+          : rankNum == 2
+              ? PdfColors.blueGrey400
+              : rankNum == 3
+                  ? PdfColors.brown400
+                  : PdfColors.red900;
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: PdfColors.grey200, width: 0.5),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+          color: PdfColors.grey50,
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          children: [
+            pw.Text(label,
+                style: pw.TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.grey700),
+                textAlign: pw.TextAlign.center),
+            pw.SizedBox(height: 6),
+            pw.Container(
+              width: 38,
+              height: 38,
+              decoration: pw.BoxDecoration(
+                color: badgeColor,
+                shape: pw.BoxShape.circle,
+              ),
+              child: pw.Center(
+                child: pw.Text(
+                  '$rankNum位',
+                  style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.white),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text('$count人中',
+                style: const pw.TextStyle(
+                    fontSize: 7, color: PdfColors.grey600),
+                textAlign: pw.TextAlign.center),
+            pw.SizedBox(height: 2),
+            pw.Text(valueStr,
+                style: pw.TextStyle(
+                    fontSize: 7.5,
+                    color: badgeColor,
+                    fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.center),
+          ],
+        ),
+      );
+    }
 
     // AI講評生成（providerから統計を取得して生成）
     final serveMap = provider.getServeStatsByPlayer(player.id);
@@ -946,7 +1084,7 @@ class _PrintScreenState extends State<PrintScreen> {
               ),
               pw.Spacer(),
               pw.Text(
-                '${player.team}チーム',
+                '${player.team}チーム  個人成績レポート',
                 style: const pw.TextStyle(
                     fontSize: 9, color: PdfColors.amber100),
               ),
@@ -1024,6 +1162,42 @@ class _PrintScreenState extends State<PrintScreen> {
 
         pw.SizedBox(height: 10),
 
+        // ランキング（3指標：サーブ効率・サービスミス率・サーブレシーブ率）
+        _sectionTitle('ランキング'),
+        pw.SizedBox(height: 4),
+        pw.Row(
+          children: [
+            pw.Expanded(
+              child: rankBadge(
+                'サーブ効率\n(エース-ミス)',
+                serveEffRank,
+                serveEffCount,
+                'スコア: $serveEff',
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Expanded(
+              child: rankBadge(
+                'サービスミス率\n(低い順が優秀)',
+                serveMissRank,
+                serveMissCount,
+                'ミス率: $serveMissPct',
+              ),
+            ),
+            pw.SizedBox(width: 8),
+            pw.Expanded(
+              child: rankBadge(
+                'サーブレシーブ率\n(オーバー率)',
+                recvRank,
+                recvCount,
+                'オーバー率: $recvPct',
+              ),
+            ),
+          ],
+        ),
+
+        pw.SizedBox(height: 10),
+
         // AI講評
         pw.Container(
           padding: const pw.EdgeInsets.all(8),
@@ -1036,15 +1210,11 @@ class _PrintScreenState extends State<PrintScreen> {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Row(
-                children: [
-                  pw.Text('AI講評',
-                      style: pw.TextStyle(
-                          fontSize: 9,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.amber900)),
-                ],
-              ),
+              pw.Text('AI講評',
+                  style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.amber900)),
               pw.SizedBox(height: 4),
               pw.Text(
                 aiComment,
