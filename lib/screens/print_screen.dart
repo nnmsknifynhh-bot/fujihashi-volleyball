@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
+import 'dart:js_interop';
+import 'dart:typed_data';
+
+import 'package:web/web.dart' as web;
 import '../providers/app_provider.dart';
 import '../models/serve_record.dart';
 import '../utils/app_theme.dart';
@@ -27,6 +31,7 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclTeamComparison = false;
 
   bool _isGenerating = false;
+  String _statusMessage = '';
 
   @override
   Widget build(BuildContext context) {
@@ -131,9 +136,9 @@ class _PrintScreenState extends State<PrintScreen> {
                     children: [
                       _infoRow(Icons.description, 'A4サイズ対応PDF'),
                       const SizedBox(height: 8),
-                      _infoRow(Icons.smartphone, 'スマホから直接印刷可能'),
+                      _infoRow(Icons.download, 'ダウンロード方式（Safari/Chrome対応）'),
                       const SizedBox(height: 8),
-                      _infoRow(Icons.palette, '赤・黒・金デザイン（白黒印刷対応）'),
+                      _infoRow(Icons.language, '日本語フォント（ローカル処理）'),
                       const SizedBox(height: 8),
                       _infoRow(Icons.family_restroom, '保護者配布向けレイアウト'),
                     ],
@@ -150,32 +155,47 @@ class _PrintScreenState extends State<PrintScreen> {
               color: AppTheme.cardBg,
               border: Border(top: BorderSide(color: Color(0xFF333333))),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryRed,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                if (_isGenerating && _statusMessage.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _statusMessage,
+                      style: const TextStyle(color: AppTheme.gold, fontSize: 12),
                     ),
-                    icon: _isGenerating
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2))
-                        : const Icon(Icons.print, color: Colors.white),
-                    label: Text(
-                      _isGenerating ? 'PDF生成中...' : '印刷・PDF保存',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: _isGenerating ? null : _generateAndPrint,
                   ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isGenerating
+                              ? AppTheme.primaryRed.withValues(alpha: 0.5)
+                              : AppTheme.primaryRed,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: _isGenerating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.download, color: Colors.white),
+                        label: Text(
+                          _isGenerating ? 'PDF生成中...' : 'PDFをダウンロード',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: _isGenerating ? null : _generatePdf,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -251,95 +271,210 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  Future<void> _generateAndPrint() async {
-    setState(() => _isGenerating = true);
+  void _setStatus(String msg) {
+    if (mounted) setState(() => _statusMessage = msg);
+  }
+
+  /// メインのPDF生成処理
+  /// - フォント：ローカルTTFアセット（ネットワーク不要）
+  /// - 出力：web.Blob + createObjectURL（iOS Safari対応）
+  /// - 非同期チャンク：各セクション間でFuture.delayed(Duration.zero)を挿入
+  Future<void> _generatePdf() async {
+    setState(() {
+      _isGenerating = true;
+      _statusMessage = 'フォント読み込み中...';
+    });
+
     final provider = Provider.of<AppProvider>(context, listen: false);
 
     try {
-      final pdf = await _buildPdf(provider);
-      await Printing.layoutPdf(
-        onLayout: (_) => pdf.save(),
-        name: '藤橋JVC_バレーボール分析_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      // UIスレッドに制御を返す
+      await Future.delayed(Duration.zero);
+
+      // ── Step 1: フォント読み込み（ローカルアセット）──
+      _setStatus('フォント読み込み中...');
+      await Future.delayed(Duration.zero);
+
+      pw.Font regularFont;
+      pw.Font boldFont;
+      try {
+        final regularData = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
+        await Future.delayed(Duration.zero); // UIスレッドに制御を返す
+        regularFont = pw.Font.ttf(regularData);
+        await Future.delayed(Duration.zero);
+
+        final boldData = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+        await Future.delayed(Duration.zero);
+        boldFont = pw.Font.ttf(boldData);
+        await Future.delayed(Duration.zero);
+      } catch (e) {
+        // フォント読み込み失敗時はHelveticaにフォールバック
+        regularFont = pw.Font.helvetica();
+        boldFont = pw.Font.helveticaBold();
+      }
+
+      _setStatus('PDFドキュメント作成中...');
+      await Future.delayed(Duration.zero);
+
+      // ── Step 2: PDFドキュメント構築 ──
+      final pdf = pw.Document();
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyyy/M/d').format(now);
+      final fileName = '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
+
+      final theme = pw.ThemeData.withFont(
+        base: regularFont,
+        bold: boldFont,
+        italic: regularFont,
+        boldItalic: boldFont,
       );
-    } catch (e) {
+
+      // ── Step 3: セクション毎にチャンク処理 ──
+      _setStatus('コンテンツ生成中...');
+      await Future.delayed(Duration.zero);
+
+      final List<pw.Widget> content = [];
+
+      if (_inclMatchResult) {
+        _setStatus('試合別結果を生成中...');
+        await Future.delayed(Duration.zero);
+        content.add(_buildPdfMatchSection(provider));
+        content.add(pw.SizedBox(height: 16));
+      }
+
+      await Future.delayed(Duration.zero);
+
+      if (_inclPlayerStats) {
+        _setStatus('選手別成績を生成中...');
+        await Future.delayed(Duration.zero);
+        content.add(_buildPdfPlayerStats(provider));
+        content.add(pw.SizedBox(height: 16));
+      }
+
+      await Future.delayed(Duration.zero);
+
+      if (_inclServeRanking) {
+        _setStatus('サーブランキングを生成中...');
+        await Future.delayed(Duration.zero);
+        content.add(_buildPdfServeRanking(provider));
+        content.add(pw.SizedBox(height: 16));
+      }
+
+      await Future.delayed(Duration.zero);
+
+      if (_inclReceiveRanking) {
+        _setStatus('レシーブランキングを生成中...');
+        await Future.delayed(Duration.zero);
+        content.add(_buildPdfReceiveRanking(provider));
+        content.add(pw.SizedBox(height: 16));
+      }
+
+      await Future.delayed(Duration.zero);
+
+      if (_inclTeamComparison) {
+        _setStatus('チーム比較を生成中...');
+        await Future.delayed(Duration.zero);
+        content.add(_buildPdfTeamComparison(provider));
+        content.add(pw.SizedBox(height: 16));
+      }
+
+      if (content.isEmpty) {
+        content.add(pw.Center(
+          child: pw.Text('出力項目が選択されていません',
+              style: pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
+        ));
+      }
+
+      _setStatus('ページレイアウト処理中...');
+      await Future.delayed(Duration.zero);
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          theme: theme,
+          margin: const pw.EdgeInsets.all(30),
+          header: (context) => _buildPdfHeader(dateStr),
+          footer: (context) => _buildPdfFooter(context),
+          build: (context) => content,
+        ),
+      );
+
+      // ── Step 4: PDF バイト列生成 ──
+      _setStatus('PDFファイルを生成中...');
+      await Future.delayed(Duration.zero);
+
+      final pdfBytes = await pdf.save();
+      await Future.delayed(Duration.zero);
+
+      // ── Step 5: web.Blob + createObjectURL でダウンロード ──
+      _setStatus('ダウンロード準備中...');
+      await Future.delayed(Duration.zero);
+
+      _downloadPdfBytes(pdfBytes, fileName);
+
       if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _statusMessage = '';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF生成エラー: $e'), backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text('PDFを生成しました。ダウンロードを確認してください。'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isGenerating = false);
-    }
-  }
-
-  Future<pw.Document> _buildPdf(AppProvider provider) async {
-    final pdf = pw.Document();
-    final now = DateTime.now();
-    final dateStr = DateFormat('yyyy年M月d日').format(now);
-
-    // 日本語フォント（PdfGoogleFonts経由でNoto Sans JPを取得）
-    // オンラインキャッシュ方式のため9MBのローカルファイルより安定
-    final pw.Font regularFont;
-    final pw.Font boldFont;
-    try {
-      regularFont = await PdfGoogleFonts.notoSansJPRegular();
-      boldFont = await PdfGoogleFonts.notoSansJPBold();
     } catch (e) {
-      throw Exception('日本語フォントの読み込みに失敗しました。\nインターネット接続を確認してください。\n詳細: $e');
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _statusMessage = '';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('PDF生成エラー: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
-    final theme = pw.ThemeData.withFont(
-      base: regularFont,
-      bold: boldFont,
-      italic: regularFont,
-      boldItalic: boldFont,
-    );
-
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        theme: theme,
-        margin: const pw.EdgeInsets.all(30),
-        header: (context) => _buildPdfHeader(dateStr),
-        footer: (context) => _buildPdfFooter(context),
-        build: (context) {
-          final List<pw.Widget> content = [];
-
-          if (_inclMatchResult) {
-            content.add(_buildPdfMatchSection(provider));
-            content.add(pw.SizedBox(height: 16));
-          }
-
-          if (_inclPlayerStats) {
-            content.add(_buildPdfPlayerStats(provider));
-            content.add(pw.SizedBox(height: 16));
-          }
-
-          if (_inclServeRanking) {
-            content.add(_buildPdfServeRanking(provider));
-            content.add(pw.SizedBox(height: 16));
-          }
-
-          if (_inclReceiveRanking) {
-            content.add(_buildPdfReceiveRanking(provider));
-            content.add(pw.SizedBox(height: 16));
-          }
-
-          if (_inclTeamComparison) {
-            content.add(_buildPdfTeamComparison(provider));
-            content.add(pw.SizedBox(height: 16));
-          }
-
-          if (content.isEmpty) {
-            content.add(pw.Text('出力項目が選択されていません'));
-          }
-
-          return content;
-        },
-      ),
-    );
-
-    return pdf;
   }
+
+  /// web.Blob + createObjectURL を使ったPDFダウンロード
+  /// iOS Safari でも動作する方式
+  void _downloadPdfBytes(List<int> bytes, String fileName) {
+    // Uint8List → JSUint8Array に変換してBlobを作成
+    final uint8list = Uint8List.fromList(bytes);
+    final jsUint8Array = uint8list.toJS;
+
+    // JSArray<BlobPart> を作成（JSAnyとしてキャスト）
+    final blobParts = [jsUint8Array as JSAny].toJS;
+
+    final blob = web.Blob(
+      blobParts,
+      web.BlobPropertyBag(type: 'application/pdf'),
+    );
+
+    final url = web.URL.createObjectURL(blob);
+
+    // <a>タグを作成してクリックシミュレート
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = 'none';
+    web.document.body?.appendChild(anchor);
+    anchor.click();
+
+    // iOS対応：少し遅延してからURLを解放
+    Future.delayed(const Duration(seconds: 2), () {
+      web.URL.revokeObjectURL(url);
+      anchor.remove();
+    });
+  }
+
+  // ── PDF コンテンツ構築ヘルパー ──
 
   pw.Widget _buildPdfHeader(String dateStr) {
     return pw.Container(
@@ -441,14 +576,35 @@ class _PrintScreenState extends State<PrintScreen> {
         pw.SizedBox(height: 8),
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: _inclPercentage
+              ? {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(1.5),
+                  2: const pw.FlexColumnWidth(1),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(1.2),
+                  5: const pw.FlexColumnWidth(1),
+                  6: const pw.FlexColumnWidth(1),
+                  7: const pw.FlexColumnWidth(1.2),
+                  8: const pw.FlexColumnWidth(1.2),
+                }
+              : {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(1.5),
+                  2: const pw.FlexColumnWidth(1),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(1.2),
+                  5: const pw.FlexColumnWidth(1),
+                  6: const pw.FlexColumnWidth(1),
+                },
           children: [
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.red900),
               children: [
                 _pdfTh('選手名'), _pdfTh('チーム'),
                 _pdfTh('エース'), _pdfTh('崩し'), _pdfTh('入っただけ'), _pdfTh('ミス'), _pdfTh('合計'),
-                if (_inclPercentage) _pdfTh('エース率') else pw.SizedBox(),
-                if (_inclPercentage) _pdfTh('ミス率') else pw.SizedBox(),
+                if (_inclPercentage) _pdfTh('エース率'),
+                if (_inclPercentage) _pdfTh('ミス率'),
               ],
             ),
             ...players.map((p) {
@@ -458,14 +614,14 @@ class _PrintScreenState extends State<PrintScreen> {
               final under = s[ServeResult.under] ?? 0;
               final justIn = s[ServeResult.justIn] ?? 0;
               final miss = s[ServeResult.miss] ?? 0;
-              final aceRate = total > 0 ? (ace / total * 100).toStringAsFixed(1) : '-';
-              final missRate = total > 0 ? (miss / total * 100).toStringAsFixed(1) : '-';
+              final aceRate = total > 0 ? '${(ace / total * 100).toStringAsFixed(1)}%' : '-';
+              final missRate = total > 0 ? '${(miss / total * 100).toStringAsFixed(1)}%' : '-';
               return pw.TableRow(
                 children: [
                   _pdfTd(p.name), _pdfTd(p.team),
                   _pdfTd('$ace'), _pdfTd('$under'), _pdfTd('$justIn'), _pdfTd('$miss'), _pdfTd('$total'),
-                  if (_inclPercentage) _pdfTd('$aceRate%') else pw.SizedBox(),
-                  if (_inclPercentage) _pdfTd('$missRate%') else pw.SizedBox(),
+                  if (_inclPercentage) _pdfTd(aceRate),
+                  if (_inclPercentage) _pdfTd(missRate),
                 ],
               );
             }),
@@ -494,29 +650,32 @@ class _PrintScreenState extends State<PrintScreen> {
       children: [
         _pdfSectionTitle('サーブランキング（エース率順）'),
         pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.red900),
-              children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('サーブ数'), _pdfTh('エース率'), _pdfTh('ミス率')],
-            ),
-            ...stats.asMap().entries.map((e) {
-              final idx = e.key;
-              final s = e.value;
-              final p = s['player'] as dynamic;
-              return pw.TableRow(
-                decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
-                children: [
-                  _pdfTd('${idx + 1}位'), _pdfTd(p.name),
-                  _pdfTd('${s['total']}本'),
-                  _pdfTd('${(s['aceRate'] as double).toStringAsFixed(1)}%'),
-                  _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
-                ],
-              );
-            }),
-          ],
-        ),
+        if (stats.isEmpty)
+          pw.Text('サーブデータなし', style: const pw.TextStyle(color: PdfColors.grey))
+        else
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.red900),
+                children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('サーブ数'), _pdfTh('エース率'), _pdfTh('ミス率')],
+              ),
+              ...stats.asMap().entries.map((e) {
+                final idx = e.key;
+                final s = e.value;
+                final p = s['player'] as dynamic;
+                return pw.TableRow(
+                  decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
+                  children: [
+                    _pdfTd('${idx + 1}位'), _pdfTd(p.name),
+                    _pdfTd('${s['total']}本'),
+                    _pdfTd('${(s['aceRate'] as double).toStringAsFixed(1)}%'),
+                    _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
+                  ],
+                );
+              }),
+            ],
+          ),
       ],
     );
   }
@@ -540,29 +699,32 @@ class _PrintScreenState extends State<PrintScreen> {
       children: [
         _pdfSectionTitle('レシーブランキング（オーバー率順）'),
         pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.red900),
-              children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('レシーブ数'), _pdfTh('オーバー率'), _pdfTh('ミス率')],
-            ),
-            ...stats.asMap().entries.map((e) {
-              final idx = e.key;
-              final s = e.value;
-              final p = s['player'] as dynamic;
-              return pw.TableRow(
-                decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
-                children: [
-                  _pdfTd('${idx + 1}位'), _pdfTd(p.name),
-                  _pdfTd('${s['total']}本'),
-                  _pdfTd('${(s['overRate'] as double).toStringAsFixed(1)}%'),
-                  _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
-                ],
-              );
-            }),
-          ],
-        ),
+        if (stats.isEmpty)
+          pw.Text('レシーブデータなし', style: const pw.TextStyle(color: PdfColors.grey))
+        else
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.red900),
+                children: [_pdfTh('順位'), _pdfTh('選手名'), _pdfTh('レシーブ数'), _pdfTh('オーバー率'), _pdfTh('ミス率')],
+              ),
+              ...stats.asMap().entries.map((e) {
+                final idx = e.key;
+                final s = e.value;
+                final p = s['player'] as dynamic;
+                return pw.TableRow(
+                  decoration: idx == 0 ? const pw.BoxDecoration(color: PdfColors.amber50) : null,
+                  children: [
+                    _pdfTd('${idx + 1}位'), _pdfTd(p.name),
+                    _pdfTd('${s['total']}本'),
+                    _pdfTd('${(s['overRate'] as double).toStringAsFixed(1)}%'),
+                    _pdfTd('${(s['missRate'] as double).toStringAsFixed(1)}%'),
+                  ],
+                );
+              }),
+            ],
+          ),
       ],
     );
   }
