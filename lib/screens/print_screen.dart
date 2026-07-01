@@ -12,8 +12,19 @@ import '../providers/app_provider.dart';
 import '../models/serve_record.dart';
 import '../utils/app_theme.dart';
 
+/// stats画面で選択中のチーム・選手をそのままPDFに反映するため、
+/// teamFilter と selectedPlayerIds を受け取る
 class PrintScreen extends StatefulWidget {
-  const PrintScreen({super.key});
+  /// 'A', 'B', 'all' のいずれか
+  final String teamFilter;
+  /// null = チーム全員, 非null = 個別選択中の選手IDセット
+  final Set<String>? selectedPlayerIds;
+
+  const PrintScreen({
+    super.key,
+    this.teamFilter = 'all',
+    this.selectedPlayerIds,
+  });
 
   @override
   State<PrintScreen> createState() => _PrintScreenState();
@@ -409,7 +420,21 @@ class _PrintScreenState extends State<PrintScreen> {
   // ─── データ収集（純粋Dartオブジェクト） ──────────────────────
 
   _PdfData _collectData(AppProvider provider) {
-    final players = provider.players;
+    // stats画面と同じフィルタリングロジックを適用
+    List players;
+    switch (widget.teamFilter) {
+      case 'A':
+        players = provider.teamAPlayers;
+      case 'B':
+        players = provider.teamBPlayers;
+      default:
+        players = provider.players;
+    }
+    // 個別選手選択が有効な場合はさらに絞り込む
+    if (widget.selectedPlayerIds != null && widget.selectedPlayerIds!.isNotEmpty) {
+      players = players.where((p) => widget.selectedPlayerIds!.contains(p.id)).toList();
+    }
+
     final matches = provider.matches;
 
     // サーブ統計

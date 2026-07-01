@@ -155,7 +155,16 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
           GestureDetector(
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const PrintScreen()),
+              MaterialPageRoute(
+                builder: (_) => PrintScreen(
+                  teamFilter: _teamFilter == TeamFilter.a
+                      ? 'A'
+                      : _teamFilter == TeamFilter.b
+                          ? 'B'
+                          : 'all',
+                  selectedPlayerIds: _selectedPlayerIds,
+                ),
+              ),
             ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
