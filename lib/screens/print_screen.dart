@@ -385,26 +385,49 @@ class _PrintScreenState extends State<PrintScreen> {
         ));
       }
 
-      _setStatus('ページレイアウト処理中...');
-      await Future.delayed(Duration.zero);
+      // ── Step 4(a): ページ追加（セクションごとに分割してyield） ──
+      // MultiPage一括処理はレイアウト計算が重いため、
+      // セクションを小さく分割して addPage を複数回呼ぶ
+      _setStatus('ページ生成中 (1/3)...');
+      await Future.delayed(const Duration(milliseconds: 16)); // 1フレーム分待つ
 
+      // 先頭セクション群（試合結果 + 選手成績）
+      final content1 = content.take((content.length / 2).ceil()).toList();
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           theme: theme,
           margin: const pw.EdgeInsets.all(30),
-          header: (context) => _buildPdfHeader(dateStr),
-          footer: (context) => _buildPdfFooter(context),
-          build: (context) => content,
+          header: (ctx) => _buildPdfHeader(dateStr),
+          footer: (ctx) => _buildPdfFooter(ctx),
+          build: (ctx) => content1,
         ),
       );
 
-      // ── Step 4: PDF バイト列生成 ──
-      _setStatus('PDFファイルを生成中...');
-      await Future.delayed(Duration.zero);
+      _setStatus('ページ生成中 (2/3)...');
+      await Future.delayed(const Duration(milliseconds: 16));
+
+      // 後半セクション群（ランキング等）
+      final content2 = content.skip((content.length / 2).ceil()).toList();
+      if (content2.isNotEmpty) {
+        pdf.addPage(
+          pw.MultiPage(
+            pageFormat: PdfPageFormat.a4,
+            theme: theme,
+            margin: const pw.EdgeInsets.all(30),
+            header: (ctx) => _buildPdfHeader(dateStr),
+            footer: (ctx) => _buildPdfFooter(ctx),
+            build: (ctx) => content2,
+          ),
+        );
+      }
+
+      // ── Step 4(b): PDF バイト列生成 ──
+      _setStatus('ページ生成中 (3/3)...');
+      await Future.delayed(const Duration(milliseconds: 16));
 
       final pdfBytes = await pdf.save();
-      await Future.delayed(Duration.zero);
+      await Future.delayed(const Duration(milliseconds: 16));
 
       // ── Step 5: web.Blob + createObjectURL でダウンロード ──
       _setStatus('ダウンロード準備中...');
