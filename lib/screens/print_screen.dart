@@ -818,19 +818,19 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text('藤橋JVC男子 バレーボール分析レポート',
                   style: pw.TextStyle(
-                      font: _boldFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 15,
                       color: PdfColors.red900)),
               pw.Text('この一本、この一点',
                   style: pw.TextStyle(
-                      font: _regularFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 9,
                       color: PdfColors.amber800)),
             ],
           ),
           pw.Text(dateStr,
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   fontSize: 9,
                   color: PdfColors.grey)),
         ],
@@ -849,12 +849,12 @@ class _PrintScreenState extends State<PrintScreen> {
         children: [
           pw.Text('藤橋JVC男子 バレーボール分析アプリ',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   fontSize: 7,
                   color: PdfColors.grey)),
           pw.Text('- $pageNum -',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   fontSize: 7,
                   color: PdfColors.grey)),
         ],
@@ -873,7 +873,7 @@ class _PrintScreenState extends State<PrintScreen> {
       ),
       child: pw.Text(title,
           style: pw.TextStyle(
-              font: _boldFont,
+              fontNormal: _regularFont, fontBold: _boldFont,
               fontSize: 12,
               color: PdfColors.red900)),
     );
@@ -883,7 +883,7 @@ class _PrintScreenState extends State<PrintScreen> {
         padding: const pw.EdgeInsets.all(4),
         child: pw.Text(t,
             style: pw.TextStyle(
-                font: _boldFont,
+                fontNormal: _regularFont, fontBold: _boldFont,
                 fontSize: 8,
                 color: PdfColors.white),
             textAlign: pw.TextAlign.center),
@@ -913,7 +913,7 @@ class _PrintScreenState extends State<PrintScreen> {
           _sectionTitle('選手別成績'),
           pw.Text('選手データがありません。',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   color: PdfColors.grey,
                   fontSize: 10)),
         ],
@@ -998,20 +998,20 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text(label,
                   style: pw.TextStyle(
-                      font: _regularFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 8,
                       color: PdfColors.grey),
                   textAlign: pw.TextAlign.center),
               pw.Text(label2,
                   style: pw.TextStyle(
-                      font: _regularFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 7,
                       color: PdfColors.grey),
                   textAlign: pw.TextAlign.center),
               pw.SizedBox(height: 4),
               pw.Text('データなし',
                   style: pw.TextStyle(
-                      font: _regularFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 9,
                       color: PdfColors.grey),
                   textAlign: pw.TextAlign.center),
@@ -1039,13 +1039,13 @@ class _PrintScreenState extends State<PrintScreen> {
           children: [
             pw.Text(label,
                 style: pw.TextStyle(
-                    font: _boldFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 7.5,
                     color: PdfColors.grey700),
                 textAlign: pw.TextAlign.center),
             pw.Text(label2,
                 style: pw.TextStyle(
-                    font: _regularFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 6.5,
                     color: PdfColors.grey500),
                 textAlign: pw.TextAlign.center),
@@ -1061,7 +1061,7 @@ class _PrintScreenState extends State<PrintScreen> {
                 child: pw.Text(
                   '$rankNum位',
                   style: pw.TextStyle(
-                      font: _boldFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 11,
                       color: PdfColors.white),
                   textAlign: pw.TextAlign.center,
@@ -1071,14 +1071,14 @@ class _PrintScreenState extends State<PrintScreen> {
             pw.SizedBox(height: 4),
             pw.Text('$count人中',
                 style: pw.TextStyle(
-                    font: _regularFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 7,
                     color: PdfColors.grey600),
                 textAlign: pw.TextAlign.center),
             pw.SizedBox(height: 2),
             pw.Text(valueStr,
                 style: pw.TextStyle(
-                    font: _boldFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 7.5,
                     color: badgeColor),
                 textAlign: pw.TextAlign.center),
@@ -1108,14 +1108,14 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Text(
                 player.number.isNotEmpty ? '#${player.number}  ' : '',
                 style: pw.TextStyle(
-                    font: _boldFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 10,
                     color: PdfColors.amber200),
               ),
               pw.Text(
                 player.name,
                 style: pw.TextStyle(
-                    font: _boldFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 13,
                     color: PdfColors.white),
               ),
@@ -1123,7 +1123,7 @@ class _PrintScreenState extends State<PrintScreen> {
               pw.Text(
                 '${player.team}チーム  個人成績レポート',
                 style: pw.TextStyle(
-                    font: _regularFont,
+                    fontNormal: _regularFont, fontBold: _boldFont,
                     fontSize: 9,
                     color: PdfColors.amber100),
               ),
@@ -1254,7 +1254,7 @@ class _PrintScreenState extends State<PrintScreen> {
             children: [
               pw.Text('AI講評',
                   style: pw.TextStyle(
-                      font: _boldFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 9,
                       color: PdfColors.amber900)),
               pw.SizedBox(height: 4),
@@ -1263,7 +1263,7 @@ class _PrintScreenState extends State<PrintScreen> {
                 pw.Text(
                   para.trim(),
                   style: pw.TextStyle(
-                      font: _regularFont,
+                      fontNormal: _regularFont, fontBold: _boldFont,
                       fontSize: 8.5,
                       color: PdfColors.grey800),
                 ),
@@ -1296,7 +1296,7 @@ class _PrintScreenState extends State<PrintScreen> {
         if (ranked.isEmpty)
           pw.Text('データなし',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   color: PdfColors.grey,
                   fontSize: 10))
         else
@@ -1373,7 +1373,7 @@ class _PrintScreenState extends State<PrintScreen> {
         if (ranked.isEmpty)
           pw.Text('データなし',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   color: PdfColors.grey,
                   fontSize: 10))
         else
@@ -1445,7 +1445,7 @@ class _PrintScreenState extends State<PrintScreen> {
           _sectionTitle('対戦相手別分析（$targetLabel）'),
           pw.Text('試合データがありません。',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   color: PdfColors.grey,
                   fontSize: 10)),
         ],
@@ -1479,7 +1479,7 @@ class _PrintScreenState extends State<PrintScreen> {
             child: pw.Text(
               '対戦相手: $opp  （$matchCount試合）',
               style: pw.TextStyle(
-                  font: _boldFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   fontSize: 10,
                   color: PdfColors.red900),
             ),
@@ -1552,7 +1552,7 @@ class _PrintScreenState extends State<PrintScreen> {
         if (tables.isEmpty)
           pw.Text('対戦相手データなし',
               style: pw.TextStyle(
-                  font: _regularFont,
+                  fontNormal: _regularFont, fontBold: _boldFont,
                   color: PdfColors.grey,
                   fontSize: 10))
         else
