@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
+import 'dart:typed_data';
 import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
@@ -201,12 +203,15 @@ class _PrintScreenState extends State<PrintScreen> {
                     children: [
                       _infoRow(Icons.description, 'A4サイズ対応PDF'),
                       const SizedBox(height: 8),
-                      _infoRow(
-                          Icons.download, 'ダウンロード方式（Safari/Chrome対応）'),
+                      _infoRow(Icons.preview, 'アプリ内プレビュー（スクロール表示）'),
+                      const SizedBox(height: 8),
+                      _infoRow(Icons.print, '印刷ダイアログから直接印刷可能'),
                       const SizedBox(height: 8),
                       _infoRow(Icons.language, '日本語フォント（ローカル処理）'),
                       const SizedBox(height: 8),
                       _infoRow(Icons.family_restroom, '保護者配布向けレイアウト'),
+                      const SizedBox(height: 8),
+                      _infoRow(Icons.download, 'PDFダウンロードも可能'),
                     ],
                   ),
                 ),
@@ -251,16 +256,16 @@ class _PrintScreenState extends State<PrintScreen> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                     color: Colors.white, strokeWidth: 2))
-                            : const Icon(Icons.download,
+                            : const Icon(Icons.preview,
                                 color: Colors.white),
                         label: Text(
-                          _isGenerating ? 'PDF生成中...' : 'PDFをダウンロード',
+                          _isGenerating ? 'PDF生成中...' : 'プレビュー・印刷',
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.bold),
                         ),
-                        onPressed: _isGenerating ? null : _generatePdf,
+                        onPressed: _isGenerating ? null : _openPreview,
                       ),
                     ),
                   ],
@@ -389,16 +394,12 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  void _setStatus(String msg) {
-    if (mounted) setState(() => _statusMessage = msg);
-  }
+  // ─── プレビュー画面を開く ──────────────────────────────────────
 
-  // ─── PDF 生成メイン ─────────────────────────────────────────
-
-  Future<void> _generatePdf() async {
+  Future<void> _openPreview() async {
     setState(() {
       _isGenerating = true;
-      _statusMessage = 'フォント読み込み中...';
+      _statusMessage = 'PDF生成中...';
     });
 
     final provider = Provider.of<AppProvider>(context, listen: false);
@@ -406,116 +407,20 @@ class _PrintScreenState extends State<PrintScreen> {
     try {
       await Future.delayed(Duration.zero);
 
-      // ── Step 1: フォント読み込み（失敗時はエラーとして停止） ──
-      final reg = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
-      await Future.delayed(Duration.zero);
-      _regularFont = pw.Font.ttf(reg);
-      await Future.delayed(Duration.zero);
-      final bld = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
-      await Future.delayed(Duration.zero);
-      _boldFont = pw.Font.ttf(bld);
-      await Future.delayed(Duration.zero);
-
-      final theme = pw.ThemeData.withFont(
-        base: _regularFont!,
-        bold: _boldFont!,
-        italic: _regularFont!,
-        boldItalic: _boldFont!,
-      );
-
-      final now = DateTime.now();
-      final dateStr = DateFormat('yyyy/M/d').format(now);
-      final fileName = '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(now)}.pdf';
-
-      // ── Step 2: データ収集 ──
-      _setStatus('データ収集中...');
-      await Future.delayed(Duration.zero);
-
-      final data = _collectData(provider);
-      await Future.delayed(Duration.zero);
-
-      // ── Step 3: PDFドキュメント生成（1ページずつ addPage → yield）──
-      final pdf = pw.Document();
-      int pageIdx = 0;
-      final totalSections = _countSections(data);
-
-      Future<void> addOnePage(List<pw.Widget> widgets) async {
-        pageIdx++;
-        _setStatus('ページ生成中... ($pageIdx/$totalSections)');
-        await Future.delayed(Duration.zero);
-
-        pdf.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            theme: theme,
-            margin: const pw.EdgeInsets.all(30),
-            build: (ctx) => pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                _pdfHeader(dateStr),
-                pw.SizedBox(height: 12),
-                ...widgets,
-                pw.Spacer(),
-                _pdfFooter(pageIdx),
-              ],
-            ),
-          ),
-        );
-        await Future.delayed(Duration.zero);
-      }
-
-      // ── 選手別成績（選手ごとに1ページ：サーブ＋レシーブ＋AI講評）──
-      if (_inclPlayerStats) {
-        for (final player in data.players) {
-          await addOnePage([
-            _buildPlayerDetailPage(player, data, provider),
-          ]);
-        }
-        if (data.players.isEmpty) {
-          await addOnePage([
-            _buildPlayerDetailPage(null, data, provider),
-          ]);
-        }
-      }
-
-      // ── サーブランキング ──
-      if (_inclServeRanking) {
-        await addOnePage([_buildServeRankPage(data)]);
-      }
-
-      // ── サーブレシーブランキング ──
-      if (_inclReceiveRanking) {
-        await addOnePage([_buildReceiveRankPage(data)]);
-      }
-
-      // ── 対戦相手別分析 ──
-      if (_inclOpponentAnalysis) {
-        await addOnePage([_buildOpponentPage(data, provider)]);
-      }
-
-      // ── Step 4: バイト列に変換 ──
-      _setStatus('PDFファイルを生成中...');
-      await Future.delayed(Duration.zero);
-
-      final pdfBytes = await pdf.save();
-      await Future.delayed(Duration.zero);
-
-      // ── Step 5: ダウンロード ──
-      _setStatus('ダウンロード準備中...');
-      await Future.delayed(Duration.zero);
-
-      _downloadBytes(pdfBytes, fileName);
-
       if (mounted) {
         setState(() {
           _isGenerating = false;
           _statusMessage = '';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PDFを生成しました。ダウンロードを確認してください。'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
+        final fileName =
+            '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PdfPreviewScreen(
+              buildDocument: () => _buildPdfBytes(provider),
+              fileName: fileName,
+            ),
           ),
         );
       }
@@ -527,7 +432,7 @@ class _PrintScreenState extends State<PrintScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('PDF生成エラー: $e'),
+            content: Text('エラー: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 6),
           ),
@@ -536,13 +441,81 @@ class _PrintScreenState extends State<PrintScreen> {
     }
   }
 
-  int _countSections(_PdfData data) {
-    int n = 0;
-    if (_inclPlayerStats) n += data.players.isEmpty ? 1 : data.players.length;
-    if (_inclServeRanking) n++;
-    if (_inclReceiveRanking) n++;
-    if (_inclOpponentAnalysis) n++;
-    return n == 0 ? 1 : n;
+  // ─── PDF バイト列生成（PdfPreviewウィジェットに渡すコールバック）──
+
+  Future<Uint8List> _buildPdfBytes(AppProvider provider) async {
+    final reg = await rootBundle.load('assets/fonts/NotoSansJP-Regular.ttf');
+    final regularFont = pw.Font.ttf(reg);
+    final bld = await rootBundle.load('assets/fonts/NotoSansJP-Bold.ttf');
+    final boldFont = pw.Font.ttf(bld);
+
+    _regularFont = regularFont;
+    _boldFont = boldFont;
+
+    final theme = pw.ThemeData.withFont(
+      base: regularFont,
+      bold: boldFont,
+      italic: regularFont,
+      boldItalic: boldFont,
+    );
+
+    final dateStr = DateFormat('yyyy/M/d').format(DateTime.now());
+    final data = _collectData(provider);
+    final pdf = pw.Document();
+    int pageIdx = 0;
+
+    void addOnePage(List<pw.Widget> widgets) {
+      pageIdx++;
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          theme: theme,
+          margin: const pw.EdgeInsets.all(30),
+          build: (ctx) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              _pdfHeader(dateStr),
+              pw.SizedBox(height: 12),
+              ...widgets,
+              pw.Spacer(),
+              _pdfFooter(pageIdx),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 選手別成績
+    if (_inclPlayerStats) {
+      if (data.players.isEmpty) {
+        addOnePage([_buildPlayerDetailPage(null, data, provider)]);
+      } else {
+        for (final player in data.players) {
+          addOnePage([_buildPlayerDetailPage(player, data, provider)]);
+        }
+      }
+    }
+    // サーブランキング
+    if (_inclServeRanking) {
+      addOnePage([_buildServeRankPage(data)]);
+    }
+    // サーブレシーブランキング
+    if (_inclReceiveRanking) {
+      addOnePage([_buildReceiveRankPage(data)]);
+    }
+    // 対戦相手別分析
+    if (_inclOpponentAnalysis) {
+      addOnePage([_buildOpponentPage(data, provider)]);
+    }
+
+    if (pageIdx == 0) {
+      addOnePage([
+        pw.Text('出力項目を1つ以上選択してください。',
+            style: pw.TextStyle(font: regularFont, fontSize: 14))
+      ]);
+    }
+
+    return pdf.save();
   }
 
   // ─── データ収集 ──────────────────────────────────────────────
@@ -1561,29 +1534,6 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  // ─── ダウンロード ─────────────────────────────────────────────
-
-  void _downloadBytes(List<int> bytes, String fileName) {
-    final uint8list = Uint8List.fromList(bytes);
-    final jsUint8Array = uint8list.toJS;
-    final blobParts = [jsUint8Array as JSAny].toJS;
-    final blob = web.Blob(
-      blobParts,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-    final url = web.URL.createObjectURL(blob);
-    final anchor =
-        web.document.createElement('a') as web.HTMLAnchorElement;
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.style.display = 'none';
-    web.document.body?.appendChild(anchor);
-    anchor.click();
-    Future.delayed(const Duration(seconds: 2), () {
-      web.URL.revokeObjectURL(url);
-      anchor.remove();
-    });
-  }
 }
 
 // ─── データクラス ─────────────────────────────────────────────────
@@ -1635,4 +1585,158 @@ class _RecvStats {
     required this.direct,
     required this.miss,
   });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PDF プレビュー画面
+// - PdfPreview ウィジェットでアプリ内スクロール表示
+// - 印刷ボタン（ブラウザ印刷ダイアログ）とダウンロードボタン付き
+// ══════════════════════════════════════════════════════════════════════════
+
+class PdfPreviewScreen extends StatelessWidget {
+  final Future<Uint8List> Function() buildDocument;
+  final String fileName;
+
+  const PdfPreviewScreen({
+    super.key,
+    required this.buildDocument,
+    required this.fileName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A1A),
+      appBar: AppBar(
+        backgroundColor: AppTheme.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.gold),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.picture_as_pdf, color: AppTheme.gold, size: 20),
+            SizedBox(width: 8),
+            Text('PDF プレビュー',
+                style: TextStyle(color: AppTheme.gold, fontSize: 18)),
+          ],
+        ),
+        actions: [
+          // ダウンロードボタン（右上）
+          IconButton(
+            icon: const Icon(Icons.download, color: AppTheme.gold),
+            tooltip: 'PDFをダウンロード',
+            onPressed: () async {
+              try {
+                final bytes = await buildDocument();
+                _downloadBytes(bytes, fileName);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('ダウンロードエラー: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+      ),
+      body: PdfPreview(
+        // PDF生成コールバック（ページ変更・印刷時に呼ばれる）
+        build: (format) => buildDocument(),
+        // ツールバーのカスタマイズ
+        pdfPreviewPageDecoration: const BoxDecoration(
+          color: Color(0xFF2A2A2A),
+        ),
+        // 余白
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        // 初期ページフォーマット（A4）
+        initialPageFormat: PdfPageFormat.a4,
+        // ページ共有ボタンを非表示（Webでは不要）
+        canChangePageFormat: false,
+        canChangeOrientation: false,
+        canDebug: false,
+        // アクションボタンのカスタマイズ
+        actions: [
+          PdfPreviewAction(
+            icon: const Icon(Icons.download, color: AppTheme.gold),
+            onPressed: (context, build, pageFormat) async {
+              try {
+                final bytes = await build(pageFormat);
+                _downloadBytes(bytes, fileName);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('ダウンロードエラー: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ],
+        // ローディング表示
+        loadingWidget: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppTheme.gold),
+              SizedBox(height: 16),
+              Text('PDF生成中...', style: TextStyle(color: AppTheme.gold)),
+            ],
+          ),
+        ),
+        // エラー表示
+        onError: (context, error) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'PDF生成エラー: $error',
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryRed,
+                ),
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                label: const Text('再試行', style: TextStyle(color: Colors.white)),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Web向けPDFダウンロード（js_interop使用）
+  void _downloadBytes(Uint8List bytes, String name) {
+    final jsUint8Array = bytes.toJS;
+    final blobParts = [jsUint8Array as JSAny].toJS;
+    final blob = web.Blob(
+      blobParts,
+      web.BlobPropertyBag(type: 'application/pdf'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    anchor.href = url;
+    anchor.download = name;
+    anchor.style.display = 'none';
+    web.document.body?.appendChild(anchor);
+    anchor.click();
+    Future.delayed(const Duration(seconds: 2), () {
+      web.URL.revokeObjectURL(url);
+      anchor.remove();
+    });
+  }
 }
