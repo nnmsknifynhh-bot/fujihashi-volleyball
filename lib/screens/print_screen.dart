@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
 import 'dart:js_interop';
+import 'dart:ui_web' as ui_web;
 
 import 'package:web/web.dart' as web;
 import '../providers/app_provider.dart';
@@ -1589,11 +1589,12 @@ class _RecvStats {
 
 // ══════════════════════════════════════════════════════════════════════════
 // PDF プレビュー画面
-// - PdfPreview ウィジェットでアプリ内スクロール表示
-// - 印刷ボタン（ブラウザ印刷ダイアログ）とダウンロードボタン付き
+// - PDFバイト列をBlob URLに変換してブラウザネイティブのiframeで表示
+// - ピンチズーム・スクロール・印刷すべてブラウザ標準機能で対応
+// - 印刷ボタン（新しいタブでPDFを開く）とダウンロードボタン付き
 // ══════════════════════════════════════════════════════════════════════════
 
-class PdfPreviewScreen extends StatelessWidget {
+class PdfPreviewScreen extends StatefulWidget {
   final Future<Uint8List> Function() buildDocument;
   final String fileName;
 
@@ -1602,6 +1603,120 @@ class PdfPreviewScreen extends StatelessWidget {
     required this.buildDocument,
     required this.fileName,
   });
+
+  @override
+  State<PdfPreviewScreen> createState() => _PdfPreviewScreenState();
+}
+
+class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
+  bool _isLoading = true;
+  String? _errorMessage;
+  Uint8List? _pdfBytes;
+  String? _blobUrl;
+  static bool _viewRegistered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _generatePdf();
+  }
+
+  @override
+  void dispose() {
+    if (_blobUrl != null) {
+      web.URL.revokeObjectURL(_blobUrl!);
+    }
+    super.dispose();
+  }
+
+  Future<void> _generatePdf() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final bytes = await widget.buildDocument();
+      final url = _createBlobUrl(bytes);
+      if (mounted) {
+        setState(() {
+          _pdfBytes = bytes;
+          _blobUrl = url;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  String _createBlobUrl(Uint8List bytes) {
+    final jsUint8Array = bytes.toJS;
+    final blobParts = [jsUint8Array as JSAny].toJS;
+    final blob = web.Blob(
+      blobParts,
+      web.BlobPropertyBag(type: 'application/pdf'),
+    );
+    return web.URL.createObjectURL(blob);
+  }
+
+  void _downloadPdf() {
+    if (_pdfBytes == null) return;
+    final jsUint8Array = _pdfBytes!.toJS;
+    final blobParts = [jsUint8Array as JSAny].toJS;
+    final blob = web.Blob(
+      blobParts,
+      web.BlobPropertyBag(type: 'application/pdf'),
+    );
+    final url = web.URL.createObjectURL(blob);
+    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
+    anchor.href = url;
+    anchor.download = widget.fileName;
+    anchor.style.display = 'none';
+    web.document.body?.appendChild(anchor);
+    anchor.click();
+    Future.delayed(const Duration(seconds: 2), () {
+      web.URL.revokeObjectURL(url);
+      anchor.remove();
+    });
+  }
+
+  void _printPdf() {
+    if (_blobUrl == null) return;
+    web.window.open(_blobUrl!, '_blank');
+  }
+
+  void _registerOrUpdateIframe(String blobUrl) {
+    if (!_viewRegistered) {
+      _viewRegistered = true;
+      ui_web.platformViewRegistry.registerViewFactory(
+        'pdf-iframe-view',
+        (int viewId) {
+          final iframe =
+              web.document.createElement('iframe') as web.HTMLIFrameElement;
+          iframe.id = 'pdf-iframe';
+          iframe.src = blobUrl;
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          iframe.style.background = '#1A1A1A';
+          return iframe;
+        },
+      );
+    } else {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        final iframe = web.document.getElementById('pdf-iframe')
+            as web.HTMLIFrameElement?;
+        if (iframe != null) {
+          iframe.src = blobUrl;
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1622,121 +1737,125 @@ class PdfPreviewScreen extends StatelessWidget {
           ],
         ),
         actions: [
-          // ダウンロードボタン（右上）
-          IconButton(
-            icon: const Icon(Icons.download, color: AppTheme.gold),
-            tooltip: 'PDFをダウンロード',
-            onPressed: () async {
-              try {
-                final bytes = await buildDocument();
-                _downloadBytes(bytes, fileName);
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('ダウンロードエラー: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-          ),
+          if (!_isLoading && _errorMessage == null) ...[
+            IconButton(
+              icon: const Icon(Icons.print, color: AppTheme.gold),
+              tooltip: '印刷 / PDF保存',
+              onPressed: _printPdf,
+            ),
+            IconButton(
+              icon: const Icon(Icons.download, color: AppTheme.gold),
+              tooltip: 'PDFをダウンロード',
+              onPressed: _downloadPdf,
+            ),
+          ],
         ],
       ),
-      body: PdfPreview(
-        // PDF生成コールバック（ページ変更・印刷時に呼ばれる）
-        build: (format) => buildDocument(),
-        // ツールバーのカスタマイズ
-        pdfPreviewPageDecoration: const BoxDecoration(
-          color: Color(0xFF2A2A2A),
-        ),
-        // 余白
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        // 初期ページフォーマット（A4）
-        initialPageFormat: PdfPageFormat.a4,
-        // ページ共有ボタンを非表示（Webでは不要）
-        canChangePageFormat: false,
-        canChangeOrientation: false,
-        canDebug: false,
-        // アクションボタンのカスタマイズ
-        actions: [
-          PdfPreviewAction(
-            icon: const Icon(Icons.download, color: AppTheme.gold),
-            onPressed: (context, build, pageFormat) async {
-              try {
-                final bytes = await build(pageFormat);
-                _downloadBytes(bytes, fileName);
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('ダウンロードエラー: $e'),
-                      backgroundColor: Colors.red,
+      body: _buildBody(),
+      bottomNavigationBar: (!_isLoading && _errorMessage == null)
+          ? Container(
+              color: AppTheme.black,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: SafeArea(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppTheme.gold),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.print, color: AppTheme.gold),
+                        label: const Text('印刷する',
+                            style: TextStyle(color: AppTheme.gold)),
+                        onPressed: _printPdf,
+                      ),
                     ),
-                  );
-                }
-              }
-            },
-          ),
-        ],
-        // ローディング表示
-        loadingWidget: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: AppTheme.gold),
-              SizedBox(height: 16),
-              Text('PDF生成中...', style: TextStyle(color: AppTheme.gold)),
-            ],
-          ),
-        ),
-        // エラー表示
-        onError: (context, error) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                'PDF生成エラー: $error',
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryRed,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryRed,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.download,
+                            color: Colors.white),
+                        label: const Text('ダウンロード',
+                            style: TextStyle(color: Colors.white)),
+                        onPressed: _downloadPdf,
+                      ),
+                    ),
+                  ],
                 ),
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                label: const Text('再試行', style: TextStyle(color: Colors.white)),
-                onPressed: () => Navigator.pop(context),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : null,
     );
   }
 
-  /// Web向けPDFダウンロード（js_interop使用）
-  void _downloadBytes(Uint8List bytes, String name) {
-    final jsUint8Array = bytes.toJS;
-    final blobParts = [jsUint8Array as JSAny].toJS;
-    final blob = web.Blob(
-      blobParts,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-    final url = web.URL.createObjectURL(blob);
-    final anchor = web.document.createElement('a') as web.HTMLAnchorElement;
-    anchor.href = url;
-    anchor.download = name;
-    anchor.style.display = 'none';
-    web.document.body?.appendChild(anchor);
-    anchor.click();
-    Future.delayed(const Duration(seconds: 2), () {
-      web.URL.revokeObjectURL(url);
-      anchor.remove();
-    });
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: AppTheme.gold),
+            SizedBox(height: 20),
+            Text('PDF生成中...',
+                style: TextStyle(color: AppTheme.gold, fontSize: 16)),
+            SizedBox(height: 8),
+            Text('しばらくお待ちください',
+                style: TextStyle(color: AppTheme.grey, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 16),
+              const Text('PDF生成に失敗しました',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(_errorMessage!,
+                  style: const TextStyle(
+                      color: AppTheme.grey, fontSize: 12),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryRed),
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                label: const Text('再試行',
+                    style: TextStyle(color: Colors.white)),
+                onPressed: _generatePdf,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_blobUrl != null) {
+      _registerOrUpdateIframe(_blobUrl!);
+      return const SizedBox.expand(
+        child: HtmlElementView(viewType: 'pdf-iframe-view'),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
