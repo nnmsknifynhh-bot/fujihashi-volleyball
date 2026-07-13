@@ -1328,6 +1328,7 @@ class _PrintScreenState extends State<PrintScreen> {
                   _th('崩し'),
                   _th('ミス'),
                   if (_inclPercentage) _th('エース率'),
+                  if (_inclPercentage) _th('崩し率'),
                   if (_inclPercentage) _th('ミス率'),
                 ],
               ),
@@ -1337,6 +1338,9 @@ class _PrintScreenState extends State<PrintScreen> {
                 final s = data.serveStats[p.id]!;
                 final aceR = s.total > 0
                     ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
+                    : '-';
+                final underR = s.total > 0
+                    ? '${(s.under / s.total * 100).toStringAsFixed(1)}%'
                     : '-';
                 final missR = s.total > 0
                     ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
@@ -1355,6 +1359,7 @@ class _PrintScreenState extends State<PrintScreen> {
                     _td('${s.miss}'),
                     if (_inclPercentage)
                       _td(aceR, highlight: idx == 0),
+                    if (_inclPercentage) _td(underR),
                     if (_inclPercentage) _td(missR),
                   ],
                 );
