@@ -64,10 +64,15 @@ class ServeRecord {
     if (rawTs == null) {
       ts = DateTime.now();
     } else if (rawTs is String) {
-      // UTC文字列をローカル時間に変換（JSTズレ対策）
-      ts = DateTime.parse(rawTs).toLocal();
+      // タイムゾーン情報なし文字列はローカル時間として扱う
+      // （DateTime.parse()はタイムゾーンなし文字列をUTCと解釈するため
+      //   .toLocal()すると+9時間されて翌日扱いになるバグを修正）
+      final parsed = DateTime.parse(rawTs);
+      // isUtc==trueなら明示的にUTC文字列（末尾Z付き）なのでtoLocal()する
+      // isUtc==falseならタイムゾーンなし＝保存時のローカル時間そのままで使う
+      ts = parsed.isUtc ? parsed.toLocal() : parsed;
     } else {
-      // Firestore Timestamp型 → .toDate()でDateTime取得してローカル変換
+      // Firestore Timestamp型 → .toDate()でUTC DateTimeを取得してローカル変換
       try {
         ts = ((rawTs as dynamic).toDate() as DateTime).toLocal();
       } catch (_) {
@@ -150,10 +155,15 @@ class ReceiveRecord {
     if (rawTs == null) {
       ts = DateTime.now();
     } else if (rawTs is String) {
-      // UTC文字列をローカル時間に変換（JSTズレ対策）
-      ts = DateTime.parse(rawTs).toLocal();
+      // タイムゾーン情報なし文字列はローカル時間として扱う
+      // （DateTime.parse()はタイムゾーンなし文字列をUTCと解釈するため
+      //   .toLocal()すると+9時間されて翌日扱いになるバグを修正）
+      final parsed = DateTime.parse(rawTs);
+      // isUtc==trueなら明示的にUTC文字列（末尾Z付き）なのでtoLocal()する
+      // isUtc==falseならタイムゾーンなし＝保存時のローカル時間そのままで使う
+      ts = parsed.isUtc ? parsed.toLocal() : parsed;
     } else {
-      // Firestore Timestamp型 → .toDate()でDateTime取得してローカル変換
+      // Firestore Timestamp型 → .toDate()でUTC DateTimeを取得してローカル変換
       try {
         ts = ((rawTs as dynamic).toDate() as DateTime).toLocal();
       } catch (_) {
