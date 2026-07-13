@@ -305,10 +305,18 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     final isSelected = _period == PeriodFilter.custom;
     return GestureDetector(
       onTap: () async {
+        // 初期表示を「1年前の月初〜今日」にする（過去データを選びやすくするため）
+        final now = DateTime.now();
+        final oneYearAgo = DateTime(now.year - 1, now.month, 1);
         final range = await showDateRangePicker(
           context: context,
           firstDate: DateTime(2020),
           lastDate: DateTime(2030),
+          // 既に選択済みならそれを初期値に、なければ1年前〜今日
+          initialDateRange: _customRange ?? DateTimeRange(
+            start: oneYearAgo,
+            end: now,
+          ),
           builder: (c, child) => Theme(
             data: ThemeData.dark().copyWith(
               colorScheme: const ColorScheme.dark(primary: AppTheme.primaryRed),
