@@ -1420,54 +1420,86 @@ class _PrintScreenState extends State<PrintScreen> {
       if (months.length > 12) break; // 無限ループ防止
     }
 
-    // ── 基準年を正しく決定する ──
-    // 優先順位:
-    //   1. widget.dateRange が指定されている → 開始日の年を基準年とする
-    //   2. 全期間 → 試合データの最も古い試合日から推定する
-    //   3. データがない → 現在年
-    final int baseYear;
-    if (widget.dateRange != null) {
-      // 期間指定あり: dateRange.startの年を基準に
-      // 年またぎの場合 (startMonth > endMonth)、
-      // dateRange.startの月がstartMonth以前なら前年が基準
-      final rangeStart = widget.dateRange!.start;
-      if (startMonth > endMonth && rangeStart.month < startMonth) {
-        // 例: シーズン11〜10月, rangeStart=2026/4月 → baseYear=2025
-        baseYear = rangeStart.year - 1;
-      } else {
-        baseYear = rangeStart.year;
+    // ── 各月に対して「実際に年を確定する」マップを作る ──
+    // アプローチ: 試合データから「年月 → 件数」マップを作り、
+    //             シーズンの各月に対して、データが存在する年を特定する。
+    //             同じ月に複数年のデータがある場合は最も古い年を採用。
+
+    // まず試合データから「年月セット」を構築
+    final matchDateMap = {for (final m in provider.matches) m.id: m.date};
+
+    // 選手のサーブ記録から実際の試合年月を収集
+    final playerMatchIds = <String>{};
+    for (final rec in provider.matches) {
+      playerMatchIds.add(rec.id);
+    }
+
+    // 全試合の年月リスト（重複除去）
+    final allYearMonths = provider.matches
+        .map((m) => DateTime(m.date.year, m.date.month))
+        .toSet()
+        .toList()
+      ..sort();
+
+    // 各月に対して「どの年のデータか」を決定する
+    // シーズン内の各月について: データが存在する年の中で最も合理的な年を選ぶ
+    final monthToYear = <int, int>{};
+
+    if (allYearMonths.isNotEmpty) {
+      // 実データから各月の年を決定
+      for (final mo in months) {
+        // その月に実際にデータが存在する年の一覧
+        final yearsWithData = allYearMonths
+            .where((ym) => ym.month == mo)
+            .map((ym) => ym.year)
+            .toList()
+          ..sort();
+
+        if (yearsWithData.isNotEmpty) {
+          // dateRangeが指定されている場合は範囲内の年を優先
+          if (widget.dateRange != null) {
+            final rangeStartYear = widget.dateRange!.start.year;
+            final rangeEndYear = widget.dateRange!.end.year;
+            // 範囲内の年を探す
+            final inRange = yearsWithData
+                .where((y) => y >= rangeStartYear && y <= rangeEndYear)
+                .toList();
+            monthToYear[mo] = inRange.isNotEmpty ? inRange.first : yearsWithData.first;
+          } else {
+            // 全期間: 最も新しいデータ（直近シーズン）を使う
+            monthToYear[mo] = yearsWithData.last;
+          }
+        }
+      }
+
+      // データがない月は隣接する月の年から補間
+      for (final mo in months) {
+        if (!monthToYear.containsKey(mo)) {
+          // データある月の年を参考に補間
+          // 年またぎシーズンの場合、月の位置で年を決める
+          final referenceYear = monthToYear.values.isNotEmpty
+              ? monthToYear.values.reduce((a, b) => a < b ? a : b)
+              : DateTime.now().year;
+          if (startMonth > endMonth) {
+            monthToYear[mo] = mo >= startMonth ? referenceYear : referenceYear + 1;
+          } else {
+            monthToYear[mo] = referenceYear;
+          }
+        }
       }
     } else {
-      // 全期間: 試合データの最古の日付から推定
-      final allDates = provider.matches.map((m) => m.date).toList();
-      if (allDates.isNotEmpty) {
-        allDates.sort();
-        final oldest = allDates.first;
-        // 年またぎシーズン（例: 11月〜10月）の場合
-        // 最古の試合月がstartMonth以降 → その年がbaseYear
-        // 最古の試合月がstartMonthより前 → 前年がbaseYear
-        if (startMonth > endMonth && oldest.month < startMonth) {
-          baseYear = oldest.year - 1;
+      // データが全くない場合: 現在年ベースで補間
+      final now = DateTime.now();
+      for (final mo in months) {
+        if (startMonth > endMonth) {
+          monthToYear[mo] = mo >= startMonth ? now.year : now.year + 1;
         } else {
-          baseYear = oldest.year;
+          monthToYear[mo] = now.year;
         }
-      } else {
-        baseYear = DateTime.now().year;
       }
     }
 
-    // ── 各月の実際の年を計算する関数 ──
-    // baseYearのstartMonthから始まり、年またぎは翌年(baseYear+1)になる
-    int yearForMonth(int month) {
-      if (startMonth > endMonth) {
-        // 年またぎシーズン（例: 11月〜10月）
-        // startMonth以降の月 → baseYear、それ以前の月 → baseYear+1
-        return month >= startMonth ? baseYear : baseYear + 1;
-      } else {
-        // 同一年内シーズン（例: 4月〜9月）
-        return baseYear;
-      }
-    }
+    int yearForMonth(int month) => monthToYear[month] ?? DateTime.now().year;
 
     // 月ごとの統計を計算
     // _monthLabel : 表示ラベル（例: "11月", "1月\n(翌年)"）
@@ -1592,9 +1624,9 @@ class _PrintScreenState extends State<PrintScreen> {
       ], highlights: [false, false, total > 0, false, false]));
     }
 
-    // シーズンラベル（年付き）
-    final startYear = baseYear;
-    final endYear = (startMonth > endMonth) ? baseYear + 1 : baseYear;
+    // シーズンラベル（年付き・実データから年を取得）
+    final startYear = yearForMonth(startMonth);
+    final endYear   = yearForMonth(endMonth);
     final seasonLabel = startYear == endYear
         ? '$startYear年$startMonth月〜$endMonth月'
         : '$startYear年$startMonth月〜$endYear年$endMonth月';
