@@ -6,7 +6,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
 import 'dart:js_interop';
-import 'dart:ui_web' as ui_web;
 
 import 'package:web/web.dart' as web;
 import '../providers/app_provider.dart';
@@ -1588,10 +1587,10 @@ class _RecvStats {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// PDF プレビュー画面
-// - PDFバイト列をBlob URLに変換してブラウザネイティブのiframeで表示
-// - ピンチズーム・スクロール・印刷すべてブラウザ標準機能で対応
-// - 印刷ボタン（新しいタブでPDFを開く）とダウンロードボタン付き
+// PDF 出力画面
+// - PDF生成後、window.open(blobUrl,'_blank') でブラウザネイティブPDFビューアを起動
+// - モバイルブラウザは iframe + Blob URL でのインラインPDF表示不可のため
+//   新タブ表示 + ダウンロードの2択で確実に表示できる構成とする
 // ══════════════════════════════════════════════════════════════════════════
 
 class PdfPreviewScreen extends StatefulWidget {
@@ -1613,7 +1612,6 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   String? _errorMessage;
   Uint8List? _pdfBytes;
   String? _blobUrl;
-  static bool _viewRegistered = false;
 
   @override
   void initState() {
@@ -1643,6 +1641,8 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
           _blobUrl = url;
           _isLoading = false;
         });
+        // 生成完了後、自動的に新タブで開く
+        web.window.open(url, '_blank');
       }
     } catch (e) {
       if (mounted) {
@@ -1664,6 +1664,13 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     return web.URL.createObjectURL(blob);
   }
 
+  /// 新しいタブでPDFを開く（ブラウザのネイティブPDFビューア）
+  void _openInNewTab() {
+    if (_blobUrl == null) return;
+    web.window.open(_blobUrl!, '_blank');
+  }
+
+  /// PDFをダウンロード
   void _downloadPdf() {
     if (_pdfBytes == null) return;
     final jsUint8Array = _pdfBytes!.toJS;
@@ -1685,39 +1692,6 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     });
   }
 
-  void _printPdf() {
-    if (_blobUrl == null) return;
-    web.window.open(_blobUrl!, '_blank');
-  }
-
-  void _registerOrUpdateIframe(String blobUrl) {
-    if (!_viewRegistered) {
-      _viewRegistered = true;
-      ui_web.platformViewRegistry.registerViewFactory(
-        'pdf-iframe-view',
-        (int viewId) {
-          final iframe =
-              web.document.createElement('iframe') as web.HTMLIFrameElement;
-          iframe.id = 'pdf-iframe';
-          iframe.src = blobUrl;
-          iframe.style.width = '100%';
-          iframe.style.height = '100%';
-          iframe.style.border = 'none';
-          iframe.style.background = '#1A1A1A';
-          return iframe;
-        },
-      );
-    } else {
-      Future.delayed(const Duration(milliseconds: 200), () {
-        final iframe = web.document.getElementById('pdf-iframe')
-            as web.HTMLIFrameElement?;
-        if (iframe != null) {
-          iframe.src = blobUrl;
-        }
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1732,16 +1706,16 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
           children: [
             Icon(Icons.picture_as_pdf, color: AppTheme.gold, size: 20),
             SizedBox(width: 8),
-            Text('PDF プレビュー',
+            Text('PDF 出力',
                 style: TextStyle(color: AppTheme.gold, fontSize: 18)),
           ],
         ),
         actions: [
           if (!_isLoading && _errorMessage == null) ...[
             IconButton(
-              icon: const Icon(Icons.print, color: AppTheme.gold),
-              tooltip: '印刷 / PDF保存',
-              onPressed: _printPdf,
+              icon: const Icon(Icons.open_in_new, color: AppTheme.gold),
+              tooltip: 'PDFを新しいタブで開く',
+              onPressed: _openInNewTab,
             ),
             IconButton(
               icon: const Icon(Icons.download, color: AppTheme.gold),
@@ -1752,55 +1726,11 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         ],
       ),
       body: _buildBody(),
-      bottomNavigationBar: (!_isLoading && _errorMessage == null)
-          ? Container(
-              color: AppTheme.black,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SafeArea(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppTheme.gold),
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.print, color: AppTheme.gold),
-                        label: const Text('印刷する',
-                            style: TextStyle(color: AppTheme.gold)),
-                        onPressed: _printPdf,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryRed,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.download,
-                            color: Colors.white),
-                        label: const Text('ダウンロード',
-                            style: TextStyle(color: Colors.white)),
-                        onPressed: _downloadPdf,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : null,
     );
   }
 
   Widget _buildBody() {
+    // ── ローディング中 ──
     if (_isLoading) {
       return const Center(
         child: Column(
@@ -1817,6 +1747,8 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         ),
       );
     }
+
+    // ── エラー ──
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -1850,12 +1782,136 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         ),
       );
     }
-    if (_blobUrl != null) {
-      _registerOrUpdateIframe(_blobUrl!);
-      return const SizedBox.expand(
-        child: HtmlElementView(viewType: 'pdf-iframe-view'),
-      );
-    }
-    return const SizedBox.shrink();
+
+    // ── PDF生成完了 → 操作ガイド画面 ──
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 16),
+          const Center(
+            child: Icon(Icons.check_circle_outline,
+                color: AppTheme.gold, size: 72),
+          ),
+          const SizedBox(height: 16),
+          const Center(
+            child: Text('PDF生成完了',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold)),
+          ),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text('新しいタブが開きました',
+                style: TextStyle(color: AppTheme.grey, fontSize: 14)),
+          ),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text(
+                'ポップアップがブロックされた場合は下のボタンをタップ',
+                style: TextStyle(color: AppTheme.grey, fontSize: 12),
+                textAlign: TextAlign.center),
+          ),
+          const SizedBox(height: 32),
+
+          // ── 新しいタブで開くボタン（メイン） ──
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.gold,
+              foregroundColor: AppTheme.black,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.open_in_new, size: 22),
+            label: const Text('PDFを開く（印刷・保存）',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
+            onPressed: _openInNewTab,
+          ),
+          const SizedBox(height: 12),
+
+          // ── ダウンロードボタン ──
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryRed,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.download, color: Colors.white, size: 22),
+            label: const Text('PDFをダウンロード',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
+            onPressed: _downloadPdf,
+          ),
+          const SizedBox(height: 32),
+
+          // ── 使い方ガイド ──
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF444444)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.info_outline, color: AppTheme.gold, size: 18),
+                  SizedBox(width: 8),
+                  Text('使い方',
+                      style: TextStyle(
+                          color: AppTheme.gold,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14)),
+                ]),
+                const SizedBox(height: 12),
+                _guideRow(Icons.open_in_new, '「PDFを開く」',
+                    'ブラウザの標準PDFビューアで表示。ズーム・スクロール・印刷ができます。'),
+                const SizedBox(height: 10),
+                _guideRow(Icons.download, '「PDFをダウンロード」',
+                    'ファイルとして保存します。保存後にPDFアプリで開けます。'),
+                const SizedBox(height: 10),
+                _guideRow(Icons.print, '印刷する方法',
+                    '「PDFを開く」→ ブラウザ右上メニュー →「印刷」または 共有 →「プリント」'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _guideRow(IconData icon, String title, String desc) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppTheme.lightGrey, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              const SizedBox(height: 2),
+              Text(desc,
+                  style: const TextStyle(
+                      color: AppTheme.grey, fontSize: 12)),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
