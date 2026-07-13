@@ -14,8 +14,8 @@ import '../models/player.dart';
 import '../models/serve_record.dart';
 import '../utils/app_theme.dart';
 
-/// stats画面で選択中のチーム・選手をそのままPDFに反映するため、
-/// teamFilter と selectedPlayerIds を受け取る
+/// stats画面で選択中のチーム・選手・期間をそのままPDFに反映するため、
+/// teamFilter と selectedPlayerIds と dateRange を受け取る
 class PrintScreen extends StatefulWidget {
   /// 'A', 'B', 'all' のいずれか
   final String teamFilter;
@@ -23,10 +23,14 @@ class PrintScreen extends StatefulWidget {
   /// null = チーム全員, 非null = 個別選択中の選手IDセット
   final Set<String>? selectedPlayerIds;
 
+  /// null = 全期間, 非null = 指定期間（start〜end）
+  final DateTimeRange? dateRange;
+
   const PrintScreen({
     super.key,
     this.teamFilter = 'all',
     this.selectedPlayerIds,
+    this.dateRange,
   });
 
   @override
@@ -412,8 +416,13 @@ class _PrintScreenState extends State<PrintScreen> {
           _isGenerating = false;
           _statusMessage = '';
         });
+        // ファイル名に期間情報を含める
+        final periodSuffix = widget.dateRange != null
+            ? '_${DateFormat('yyyyMMdd').format(widget.dateRange!.start)}-'
+                '${DateFormat('yyyyMMdd').format(widget.dateRange!.end.subtract(const Duration(days: 1)))}'
+            : '_全期間';
         final fileName =
-            '藤橋JVC_分析レポート_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+            '藤橋JVC_分析レポート${periodSuffix}_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -459,7 +468,18 @@ class _PrintScreenState extends State<PrintScreen> {
       boldItalic: boldFont,
     );
 
-    final dateStr = DateFormat('yyyy/M/d').format(DateTime.now());
+    // 期間文字列：期間指定ありなら「YYYY/M/D 〜 YYYY/M/D」、なければ「全期間」
+    final String periodStr;
+    if (widget.dateRange != null) {
+      final s = DateFormat('yyyy/M/d').format(widget.dateRange!.start);
+      // endは「翁日 00:00」なので展示用に1日引く
+      final eDate = widget.dateRange!.end.subtract(const Duration(days: 1));
+      final e = DateFormat('yyyy/M/d').format(eDate);
+      periodStr = '$s 〜 $e';
+    } else {
+      periodStr = '全期間';
+    }
+    final dateStr = '${DateFormat('yyyy/M/d').format(DateTime.now())} 出力  対象期間: $periodStr';
     final data = _collectData(provider);
     final pdf = pw.Document();
     int pageIdx = 0;
@@ -538,17 +558,28 @@ class _PrintScreenState extends State<PrintScreen> {
           .toList();
     }
 
-    final allMatches = provider.matches;
+    // 期間フィルター用ショートカット
+    final from = widget.dateRange?.start;
+    final to = widget.dateRange?.end;
+
+    // allMatches：期間指定がある場合は試合日で絞り込む
+    final allMatches = (from != null || to != null)
+        ? provider.matches.where((m) {
+            if (from != null && m.date.isBefore(from)) return false;
+            if (to != null && !m.date.isBefore(to)) return false;
+            return true;
+          }).toList()
+        : provider.matches;
 
     // 対戦相手フィルター適用（複数選択対応・空=全対戦相手）
     final filteredMatches = _selectedOpponents.isNotEmpty
         ? allMatches.where((m) => _selectedOpponents.contains(m.opponent)).toList()
         : allMatches;
 
-    // サーブ統計（全試合分）
+    // サーブ統計（期間フィルター適用）
     final serveStats = <String, _ServeStats>{};
     for (final p in players) {
-      final s = provider.getServeStatsByPlayer(p.id);
+      final s = provider.getServeStatsByPlayer(p.id, from: from, to: to);
       final total = s.values.fold(0, (a, b) => a + b);
       final ace = s[ServeResult.ace] ?? 0;
       final under = s[ServeResult.under] ?? 0;
@@ -563,10 +594,10 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // レシーブ統計（全試合分）
+    // レシーブ統計（期間フィルター適用）
     final recvStats = <String, _RecvStats>{};
     for (final p in players) {
-      final s = provider.getReceiveStatsByPlayer(p.id);
+      final s = provider.getReceiveStatsByPlayer(p.id, from: from, to: to);
       final total = s.values.fold(0, (a, b) => a + b);
       final over = s[ReceiveResult.over] ?? 0;
       final under = s[ReceiveResult.under] ?? 0;
@@ -1060,9 +1091,17 @@ class _PrintScreenState extends State<PrintScreen> {
       );
     }
 
-    // AI講評生成（providerから統計を取得して生成）
-    final serveMap = provider.getServeStatsByPlayer(player.id);
-    final recvMap = provider.getReceiveStatsByPlayer(player.id);
+    // AI講評生成（providerから統計を取得して生成・期間フィルター適用）
+    final serveMap = provider.getServeStatsByPlayer(
+      player.id,
+      from: widget.dateRange?.start,
+      to: widget.dateRange?.end,
+    );
+    final recvMap = provider.getReceiveStatsByPlayer(
+      player.id,
+      from: widget.dateRange?.start,
+      to: widget.dateRange?.end,
+    );
     final aiComment = _generateAiComment(player, serveMap, recvMap);
 
     return pw.Column(
