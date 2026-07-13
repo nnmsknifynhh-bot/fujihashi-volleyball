@@ -52,9 +52,9 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     final now = DateTime.now();
     switch (_period) {
       case PeriodFilter.today:
-        // 今日 00:00:00 〜 翌日 00:00:00（UTC統一比較対応）
-        final start = DateTime(now.year, now.month, now.day, 0, 0, 0);
-        final end   = DateTime(now.year, now.month, now.day + 1, 0, 0, 0);
+        // 今日の試合日 00:00:00 〜 翌日 00:00:00
+        final start = DateTime(now.year, now.month, now.day);
+        final end   = DateTime(now.year, now.month, now.day + 1);
         return DateTimeRange(start: start, end: end);
       case PeriodFilter.custom:
         if (_customRange == null) return null;

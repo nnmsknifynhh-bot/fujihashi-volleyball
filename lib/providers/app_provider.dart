@@ -15,6 +15,8 @@ class AppProvider extends ChangeNotifier {
   List<ServeRecord> _serveRecords = [];
   List<ReceiveRecord> _receiveRecords = [];
 
+
+
   String _currentTeam = 'A';
   String? _currentMatchId;
   bool _isLoading = true;
@@ -358,12 +360,23 @@ class AppProvider extends ChangeNotifier {
       _receiveRecords.where((r) => r.matchId == matchId).toList();
 
   // ── 選手別サーブ集計 ──
+  // from/to は「試合日(match.date)」で絞る
+  // （timestampは入力日時のためフィルターに使わない）
   Map<ServeResult, int> getServeStatsByPlayer(
       String playerId, {String? matchId, DateTime? from, DateTime? to}) {
     var records = _serveRecords.where((r) => r.playerId == playerId);
     if (matchId != null) records = records.where((r) => r.matchId == matchId);
-    if (from != null) records = records.where((r) => !r.timestamp.isBefore(from));
-    if (to != null) records = records.where((r) => r.timestamp.isBefore(to));
+    if (from != null || to != null) {
+      // matchIdをキーにした試合日マップを作成
+      final matchDateMap = {for (final m in _matches) m.id: m.date};
+      records = records.where((r) {
+        final matchDate = matchDateMap[r.matchId];
+        if (matchDate == null) return true; // 試合が見つからない場合は含める
+        if (from != null && matchDate.isBefore(from)) return false;
+        if (to != null && !matchDate.isBefore(to)) return false;
+        return true;
+      });
+    }
     final result = <ServeResult, int>{};
     for (final r in ServeResult.values) {
       result[r] = records.where((rec) => rec.result == r).length;
@@ -372,12 +385,21 @@ class AppProvider extends ChangeNotifier {
   }
 
   // ── 選手別レシーブ集計 ──
+  // from/to は「試合日(match.date)」で絞る
   Map<ReceiveResult, int> getReceiveStatsByPlayer(
       String playerId, {String? matchId, DateTime? from, DateTime? to}) {
     var records = _receiveRecords.where((r) => r.playerId == playerId);
     if (matchId != null) records = records.where((r) => r.matchId == matchId);
-    if (from != null) records = records.where((r) => !r.timestamp.isBefore(from));
-    if (to != null) records = records.where((r) => r.timestamp.isBefore(to));
+    if (from != null || to != null) {
+      final matchDateMap = {for (final m in _matches) m.id: m.date};
+      records = records.where((r) {
+        final matchDate = matchDateMap[r.matchId];
+        if (matchDate == null) return true;
+        if (from != null && matchDate.isBefore(from)) return false;
+        if (to != null && !matchDate.isBefore(to)) return false;
+        return true;
+      });
+    }
     final result = <ReceiveResult, int>{};
     for (final r in ReceiveResult.values) {
       result[r] = records.where((rec) => rec.result == r).length;
