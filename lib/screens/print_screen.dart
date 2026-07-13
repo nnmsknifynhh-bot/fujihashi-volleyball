@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:js_interop';
 
@@ -1588,9 +1589,9 @@ class _RecvStats {
 
 // ══════════════════════════════════════════════════════════════════════════
 // PDF 出力画面
-// - PDF生成後、window.open(blobUrl,'_blank') でブラウザネイティブPDFビューアを起動
-// - モバイルブラウザは iframe + Blob URL でのインラインPDF表示不可のため
-//   新タブ表示 + ダウンロードの2択で確実に表示できる構成とする
+// - PDF生成後、<a download> でファイルをダウンロード（iOS Safari含む全環境対応）
+// - iOS Safari: window.open(blob/data:) は白紙になるため <a download> が唯一の確実な方法
+// - Android/PC: 追加で「PDFを開く」ボタンからbase64 Data URI方式で新タブ表示可
 // ══════════════════════════════════════════════════════════════════════════
 
 class PdfPreviewScreen extends StatefulWidget {
@@ -1611,7 +1612,6 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   Uint8List? _pdfBytes;
-  String? _blobUrl;
 
   @override
   void initState() {
@@ -1621,9 +1621,6 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
 
   @override
   void dispose() {
-    if (_blobUrl != null) {
-      web.URL.revokeObjectURL(_blobUrl!);
-    }
     super.dispose();
   }
 
@@ -1634,15 +1631,13 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     });
     try {
       final bytes = await widget.buildDocument();
-      final url = _createBlobUrl(bytes);
       if (mounted) {
         setState(() {
           _pdfBytes = bytes;
-          _blobUrl = url;
           _isLoading = false;
         });
-        // 生成完了後、自動的に新タブで開く
-        web.window.open(url, '_blank');
+        // 生成完了後、自動的にダウンロード開始（iOS Safari含む全環境で動作）
+        _downloadPdf(bytes);
       }
     } catch (e) {
       if (mounted) {
@@ -1654,26 +1649,12 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     }
   }
 
-  String _createBlobUrl(Uint8List bytes) {
-    final jsUint8Array = bytes.toJS;
-    final blobParts = [jsUint8Array as JSAny].toJS;
-    final blob = web.Blob(
-      blobParts,
-      web.BlobPropertyBag(type: 'application/pdf'),
-    );
-    return web.URL.createObjectURL(blob);
-  }
-
-  /// 新しいタブでPDFを開く（ブラウザのネイティブPDFビューア）
-  void _openInNewTab() {
-    if (_blobUrl == null) return;
-    web.window.open(_blobUrl!, '_blank');
-  }
-
-  /// PDFをダウンロード
-  void _downloadPdf() {
-    if (_pdfBytes == null) return;
-    final jsUint8Array = _pdfBytes!.toJS;
+  /// PDFをダウンロード（iOS Safari対応・<a download>方式）
+  /// iOS 13+: ダウンロード後にファイルアプリ or 共有→プリントで印刷可能
+  void _downloadPdf([Uint8List? bytes]) {
+    final data = bytes ?? _pdfBytes;
+    if (data == null) return;
+    final jsUint8Array = data.toJS;
     final blobParts = [jsUint8Array as JSAny].toJS;
     final blob = web.Blob(
       blobParts,
@@ -1686,10 +1667,18 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     anchor.style.display = 'none';
     web.document.body?.appendChild(anchor);
     anchor.click();
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 3), () {
       web.URL.revokeObjectURL(url);
       anchor.remove();
     });
+  }
+
+  /// Androidなど非iOS環境向け：新しいタブでPDFを開く（base64 Data URI方式）
+  void _openInNewTab() {
+    if (_pdfBytes == null) return;
+    final base64Str = base64Encode(_pdfBytes!);
+    final dataUri = 'data:application/pdf;base64,$base64Str';
+    web.window.open(dataUri, '_blank');
   }
 
   @override
@@ -1713,14 +1702,14 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         actions: [
           if (!_isLoading && _errorMessage == null) ...[
             IconButton(
-              icon: const Icon(Icons.open_in_new, color: AppTheme.gold),
-              tooltip: 'PDFを新しいタブで開く',
-              onPressed: _openInNewTab,
-            ),
-            IconButton(
               icon: const Icon(Icons.download, color: AppTheme.gold),
               tooltip: 'PDFをダウンロード',
-              onPressed: _downloadPdf,
+              onPressed: () => _downloadPdf(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.open_in_new, color: AppTheme.gold),
+              tooltip: 'PDFを開く（Android/PC）',
+              onPressed: _openInNewTab,
             ),
           ],
         ],
@@ -1804,19 +1793,12 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
           ),
           const SizedBox(height: 8),
           const Center(
-            child: Text('新しいタブが開きました',
+            child: Text('PDFのダウンロードが始まりました',
                 style: TextStyle(color: AppTheme.grey, fontSize: 14)),
-          ),
-          const SizedBox(height: 8),
-          const Center(
-            child: Text(
-                'ポップアップがブロックされた場合は下のボタンをタップ',
-                style: TextStyle(color: AppTheme.grey, fontSize: 12),
-                textAlign: TextAlign.center),
           ),
           const SizedBox(height: 32),
 
-          // ── 新しいタブで開くボタン（メイン） ──
+          // ── ダウンロードボタン（メイン・iOS Safari対応） ──
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.gold,
@@ -1825,15 +1807,15 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            icon: const Icon(Icons.open_in_new, size: 22),
-            label: const Text('PDFを開く（印刷・保存）',
+            icon: const Icon(Icons.download, size: 22),
+            label: const Text('PDFをダウンロード',
                 style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.bold)),
-            onPressed: _openInNewTab,
+            onPressed: () => _downloadPdf(),
           ),
           const SizedBox(height: 12),
 
-          // ── ダウンロードボタン ──
+          // ── 新しいタブで開くボタン（Android/PC向け） ──
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryRed,
@@ -1841,13 +1823,14 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            icon: const Icon(Icons.download, color: Colors.white, size: 22),
-            label: const Text('PDFをダウンロード',
+            icon: const Icon(Icons.open_in_new,
+                color: Colors.white, size: 22),
+            label: const Text('PDFを開く（印刷・保存）',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold)),
-            onPressed: _downloadPdf,
+            onPressed: _openInNewTab,
           ),
           const SizedBox(height: 32),
 
@@ -1872,14 +1855,17 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
                           fontSize: 14)),
                 ]),
                 const SizedBox(height: 12),
-                _guideRow(Icons.open_in_new, '「PDFを開く」',
-                    'ブラウザの標準PDFビューアで表示。ズーム・スクロール・印刷ができます。'),
-                const SizedBox(height: 10),
                 _guideRow(Icons.download, '「PDFをダウンロード」',
-                    'ファイルとして保存します。保存後にPDFアプリで開けます。'),
+                    'PDFファイルを保存します。保存後にPDFアプリや「ファイル」アプリで開けます。'),
                 const SizedBox(height: 10),
-                _guideRow(Icons.print, '印刷する方法',
-                    '「PDFを開く」→ ブラウザ右上メニュー →「印刷」または 共有 →「プリント」'),
+                _guideRow(Icons.open_in_new, '「PDFを開く」',
+                    'Android/PCでブラウザのPDFビューアで表示できます。印刷ダイアログを開けます。'),
+                const SizedBox(height: 10),
+                _guideRow(Icons.phone_iphone, 'iPhoneでの印刷方法',
+                    'ダウンロード後 → 「ファイル」アプリでPDFを開く → 共有ボタン →「プリント」をタップ'),
+                const SizedBox(height: 10),
+                _guideRow(Icons.android, 'Androidでの印刷方法',
+                    '「PDFを開く」→ ブラウザ右上メニュー →「印刷」をタップ'),
               ],
             ),
           ),
