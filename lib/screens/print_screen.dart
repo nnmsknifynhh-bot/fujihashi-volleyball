@@ -1288,161 +1288,223 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
-  // ── サーブランキングページ ──────────────────────────────────────
+  // ── サーブランキングページ（エース率順・崩し率順・ミス率順の3表）──────
   pw.Widget _buildServeRankPage(_PdfData data) {
-    final ranked = data.players
+    final activePlayers = data.players
         .where((p) => (data.serveStats[p.id]?.total ?? 0) > 0)
-        .toList()
+        .toList();
+
+    if (activePlayers.isEmpty) {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('サーブランキング'),
+          pw.Text('データなし',
+              style: pw.TextStyle(
+                  fontNormal: _regularFont, fontBold: _boldFont,
+                  color: PdfColors.grey, fontSize: 10)),
+        ],
+      );
+    }
+
+    // ── ① エース率順（高い順）──
+    final byAce = [...activePlayers]
       ..sort((a, b) {
-        final rA = data.serveStats[a.id]!;
-        final rB = data.serveStats[b.id]!;
-        final aceA = rA.total > 0 ? rA.ace / rA.total : 0.0;
-        final aceB = rB.total > 0 ? rB.ace / rB.total : 0.0;
-        return aceB.compareTo(aceA);
+        final sA = data.serveStats[a.id]!;
+        final sB = data.serveStats[b.id]!;
+        final vA = sA.ace / sA.total;
+        final vB = sB.ace / sB.total;
+        return vB.compareTo(vA);
       });
+
+    // ── ② 崩し率順（高い順）──
+    final byUnder = [...activePlayers]
+      ..sort((a, b) {
+        final sA = data.serveStats[a.id]!;
+        final sB = data.serveStats[b.id]!;
+        final vA = sA.under / sA.total;
+        final vB = sB.under / sB.total;
+        return vB.compareTo(vA);
+      });
+
+    // ── ③ ミス率順（低い順 = 良い順）──
+    final byMiss = [...activePlayers]
+      ..sort((a, b) {
+        final sA = data.serveStats[a.id]!;
+        final sB = data.serveStats[b.id]!;
+        final vA = sA.miss / sA.total;
+        final vB = sB.miss / sB.total;
+        return vA.compareTo(vB); // 低い順
+      });
+
+    // ── 共通テーブル生成ヘルパー ──
+    pw.Widget buildServeTable(
+      List ranked,
+      String highlightKey, // 'ace' | 'under' | 'miss'
+    ) {
+      return pw.Table(
+        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.red900),
+            children: [
+              _th('順位'),
+              _th('選手名'),
+              _th('チーム'),
+              _th('本数'),
+              _th('エース'),
+              _th('崩し'),
+              _th('ミス'),
+              if (_inclPercentage) _th('エース率'),
+              if (_inclPercentage) _th('崩し率'),
+              if (_inclPercentage) _th('ミス率'),
+            ],
+          ),
+          ...(ranked as List<dynamic>).asMap().entries.map((e) {
+            final idx = e.key as int;
+            final p = e.value as Player;
+            final s = data.serveStats[p.id]!;
+            final aceR = '${(s.ace / s.total * 100).toStringAsFixed(1)}%';
+            final underR = '${(s.under / s.total * 100).toStringAsFixed(1)}%';
+            final missR = '${(s.miss / s.total * 100).toStringAsFixed(1)}%';
+            return pw.TableRow(
+              decoration: idx == 0
+                  ? const pw.BoxDecoration(color: PdfColors.amber50)
+                  : null,
+              children: [
+                _td('${idx + 1}位'),
+                _td(p.name),
+                _td(p.team),
+                _td('${s.total}'),
+                _td('${s.ace}',   highlight: idx == 0 && highlightKey == 'ace'),
+                _td('${s.under}', highlight: idx == 0 && highlightKey == 'under'),
+                _td('${s.miss}',  highlight: idx == 0 && highlightKey == 'miss'),
+                if (_inclPercentage) _td(aceR,   highlight: idx == 0 && highlightKey == 'ace'),
+                if (_inclPercentage) _td(underR, highlight: idx == 0 && highlightKey == 'under'),
+                if (_inclPercentage) _td(missR,  highlight: idx == 0 && highlightKey == 'miss'),
+              ],
+            );
+          }),
+        ],
+      );
+    }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
+        // ① エース率順
         _sectionTitle('サーブランキング（エース率順）'),
-        if (ranked.isEmpty)
-          pw.Text('データなし',
-              style: pw.TextStyle(
-                  fontNormal: _regularFont, fontBold: _boldFont,
-                  color: PdfColors.grey,
-                  fontSize: 10))
-        else
-          pw.Table(
-            border: pw.TableBorder.all(
-                color: PdfColors.grey300, width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.red900),
-                children: [
-                  _th('順位'),
-                  _th('選手名'),
-                  _th('チーム'),
-                  _th('サーブ数'),
-                  _th('エース'),
-                  _th('崩し'),
-                  _th('ミス'),
-                  if (_inclPercentage) _th('エース率'),
-                  if (_inclPercentage) _th('崩し率'),
-                  if (_inclPercentage) _th('ミス率'),
-                ],
-              ),
-              ...ranked.asMap().entries.map((e) {
-                final idx = e.key;
-                final p = e.value;
-                final s = data.serveStats[p.id]!;
-                final aceR = s.total > 0
-                    ? '${(s.ace / s.total * 100).toStringAsFixed(1)}%'
-                    : '-';
-                final underR = s.total > 0
-                    ? '${(s.under / s.total * 100).toStringAsFixed(1)}%'
-                    : '-';
-                final missR = s.total > 0
-                    ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
-                    : '-';
-                return pw.TableRow(
-                  decoration: idx == 0
-                      ? const pw.BoxDecoration(color: PdfColors.amber50)
-                      : null,
-                  children: [
-                    _td('${idx + 1}位'),
-                    _td(p.name),
-                    _td(p.team),
-                    _td('${s.total}'),
-                    _td('${s.ace}', highlight: idx == 0),
-                    _td('${s.under}'),
-                    _td('${s.miss}'),
-                    if (_inclPercentage)
-                      _td(aceR, highlight: idx == 0),
-                    if (_inclPercentage) _td(underR),
-                    if (_inclPercentage) _td(missR),
-                  ],
-                );
-              }),
-            ],
-          ),
+        buildServeTable(byAce, 'ace'),
+        pw.SizedBox(height: 14),
+        // ② 崩し率順
+        _sectionTitle('サーブランキング（崩し率順）'),
+        buildServeTable(byUnder, 'under'),
+        pw.SizedBox(height: 14),
+        // ③ ミス率順
+        _sectionTitle('サーブランキング（ミス率順・低い方が良い）'),
+        buildServeTable(byMiss, 'miss'),
       ],
     );
   }
 
-  // ── レシーブランキングページ ────────────────────────────────────
+  // ── レシーブランキングページ（オーバー率順・ミス率順の2表）──────────
   pw.Widget _buildReceiveRankPage(_PdfData data) {
-    final ranked = data.players
+    final activePlayers = data.players
         .where((p) => (data.recvStats[p.id]?.total ?? 0) > 0)
-        .toList()
+        .toList();
+
+    if (activePlayers.isEmpty) {
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionTitle('サーブレシーブランキング'),
+          pw.Text('データなし',
+              style: pw.TextStyle(
+                  fontNormal: _regularFont, fontBold: _boldFont,
+                  color: PdfColors.grey, fontSize: 10)),
+        ],
+      );
+    }
+
+    // ── ① オーバー率順（高い順）──
+    final byOver = [...activePlayers]
       ..sort((a, b) {
         final rA = data.recvStats[a.id]!;
         final rB = data.recvStats[b.id]!;
-        final ovA = rA.total > 0 ? rA.over / rA.total : 0.0;
-        final ovB = rB.total > 0 ? rB.over / rB.total : 0.0;
-        return ovB.compareTo(ovA);
+        final vA = rA.over / rA.total;
+        final vB = rB.over / rB.total;
+        return vB.compareTo(vA);
       });
+
+    // ── ② ミス率順（低い順 = 良い順）──
+    final byMiss = [...activePlayers]
+      ..sort((a, b) {
+        final rA = data.recvStats[a.id]!;
+        final rB = data.recvStats[b.id]!;
+        final vA = rA.miss / rA.total;
+        final vB = rB.miss / rB.total;
+        return vA.compareTo(vB); // 低い順
+      });
+
+    // ── 共通テーブル生成ヘルパー ──
+    pw.Widget buildRecvTable(
+      List ranked,
+      String highlightKey, // 'over' | 'miss'
+    ) {
+      return pw.Table(
+        border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.red900),
+            children: [
+              _th('順位'),
+              _th('選手名'),
+              _th('チーム'),
+              _th('本数'),
+              _th('オーバー'),
+              _th('アンダー'),
+              _th('ミス'),
+              if (_inclPercentage) _th('オーバー率'),
+              if (_inclPercentage) _th('ミス率'),
+            ],
+          ),
+          ...(ranked as List<dynamic>).asMap().entries.map((e) {
+            final idx = e.key as int;
+            final p = e.value as Player;
+            final s = data.recvStats[p.id]!;
+            final ovR  = '${(s.over / s.total * 100).toStringAsFixed(1)}%';
+            final missR = '${(s.miss / s.total * 100).toStringAsFixed(1)}%';
+            return pw.TableRow(
+              decoration: idx == 0
+                  ? const pw.BoxDecoration(color: PdfColors.amber50)
+                  : null,
+              children: [
+                _td('${idx + 1}位'),
+                _td(p.name),
+                _td(p.team),
+                _td('${s.total}'),
+                _td('${s.over}',  highlight: idx == 0 && highlightKey == 'over'),
+                _td('${s.under}'),
+                _td('${s.miss}',  highlight: idx == 0 && highlightKey == 'miss'),
+                if (_inclPercentage) _td(ovR,   highlight: idx == 0 && highlightKey == 'over'),
+                if (_inclPercentage) _td(missR, highlight: idx == 0 && highlightKey == 'miss'),
+              ],
+            );
+          }),
+        ],
+      );
+    }
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
+        // ① オーバー率順
         _sectionTitle('サーブレシーブランキング（オーバー率順）'),
-        if (ranked.isEmpty)
-          pw.Text('データなし',
-              style: pw.TextStyle(
-                  fontNormal: _regularFont, fontBold: _boldFont,
-                  color: PdfColors.grey,
-                  fontSize: 10))
-        else
-          pw.Table(
-            border: pw.TableBorder.all(
-                color: PdfColors.grey300, width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.red900),
-                children: [
-                  _th('順位'),
-                  _th('選手名'),
-                  _th('チーム'),
-                  _th('レシーブ数'),
-                  _th('オーバー'),
-                  _th('アンダー'),
-                  _th('ミス'),
-                  if (_inclPercentage) _th('オーバー率'),
-                  if (_inclPercentage) _th('ミス率'),
-                ],
-              ),
-              ...ranked.asMap().entries.map((e) {
-                final idx = e.key;
-                final p = e.value;
-                final s = data.recvStats[p.id]!;
-                final ovR = s.total > 0
-                    ? '${(s.over / s.total * 100).toStringAsFixed(1)}%'
-                    : '-';
-                final missR = s.total > 0
-                    ? '${(s.miss / s.total * 100).toStringAsFixed(1)}%'
-                    : '-';
-                return pw.TableRow(
-                  decoration: idx == 0
-                      ? const pw.BoxDecoration(color: PdfColors.amber50)
-                      : null,
-                  children: [
-                    _td('${idx + 1}位'),
-                    _td(p.name),
-                    _td(p.team),
-                    _td('${s.total}'),
-                    _td('${s.over}', highlight: idx == 0),
-                    _td('${s.under}'),
-                    _td('${s.miss}'),
-                    if (_inclPercentage)
-                      _td(ovR, highlight: idx == 0),
-                    if (_inclPercentage) _td(missR),
-                  ],
-                );
-              }),
-            ],
-          ),
+        buildRecvTable(byOver, 'over'),
+        pw.SizedBox(height: 14),
+        // ② ミス率順
+        _sectionTitle('サーブレシーブランキング（ミス率順・低い方が良い）'),
+        buildRecvTable(byMiss, 'miss'),
       ],
     );
   }
