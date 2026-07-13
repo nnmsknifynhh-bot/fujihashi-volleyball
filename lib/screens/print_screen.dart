@@ -46,9 +46,11 @@ class _PrintScreenState extends State<PrintScreen> {
   bool _inclOpponentAnalysis = true; // 対戦相手別分析
   bool _inclMonthlyStats = true;     // 月別成績表
 
-  // 月別成績表のシーズン設定（11月〜翌10月がデフォルト）
-  int _seasonStartMonth = 11; // 開始月（1〜12）
-  int _seasonEndMonth = 10;   // 終了月（1〜12）
+  // 月別成績表のシーズン設定（デフォルト: 2025年11月〜2026年10月）
+  int _seasonStartYear  = 2025; // 開始年
+  int _seasonStartMonth = 11;   // 開始月（1〜12）
+  int _seasonEndYear    = 2026; // 終了年
+  int _seasonEndMonth   = 10;   // 終了月（1〜12）
 
   // 対戦相手別分析の選択状態（複数選択対応・空=全対戦相手）
   Set<String> _selectedOpponents = {};
@@ -176,32 +178,48 @@ class _PrintScreenState extends State<PrintScreen> {
                               fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
+                        // 開始：年 + 月
                         Row(
                           children: [
-                            const Text('開始月',
+                            const Text('開始',
                                 style: TextStyle(
                                     color: AppTheme.lightGrey, fontSize: 12)),
                             const SizedBox(width: 8),
+                            _yearDropdown(
+                              _seasonStartYear,
+                              (v) => setState(() => _seasonStartYear = v),
+                            ),
+                            const SizedBox(width: 6),
                             _monthDropdown(
                               _seasonStartMonth,
                               (v) => setState(() => _seasonStartMonth = v),
                             ),
-                            const SizedBox(width: 16),
-                            const Text('終了月',
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // 終了：年 + 月
+                        Row(
+                          children: [
+                            const Text('終了',
                                 style: TextStyle(
                                     color: AppTheme.lightGrey, fontSize: 12)),
                             const SizedBox(width: 8),
+                            _yearDropdown(
+                              _seasonEndYear,
+                              (v) => setState(() => _seasonEndYear = v),
+                            ),
+                            const SizedBox(width: 6),
                             _monthDropdown(
                               _seasonEndMonth,
                               (v) => setState(() => _seasonEndMonth = v),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
-                          '例）11月〜翌10月（デフォルト: 11月〜10月）',
-                          style: TextStyle(
-                              color: AppTheme.grey, fontSize: 10),
+                          '$_seasonStartYear年$_seasonStartMonth月 〜 $_seasonEndYear年$_seasonEndMonth月',
+                          style: const TextStyle(
+                              color: AppTheme.gold, fontSize: 11),
                         ),
                       ],
                     ),
@@ -484,6 +502,35 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
+  // 年選択ドロップダウン（2020〜2035）
+  Widget _yearDropdown(int currentYear, ValueChanged<int> onChanged) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg2,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF555555)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: currentYear,
+          dropdownColor: AppTheme.cardBg2,
+          style: const TextStyle(color: AppTheme.white, fontSize: 13),
+          items: List.generate(16, (i) => i + 2020).map((y) {
+            return DropdownMenuItem(
+              value: y,
+              child: Text('$y年',
+                  style: const TextStyle(color: AppTheme.white, fontSize: 13)),
+            );
+          }).toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _infoRow(IconData icon, String text) {
     return Row(
       children: [
@@ -621,7 +668,9 @@ class _PrintScreenState extends State<PrintScreen> {
           _buildMonthlyStatsPage(
             player,
             provider,
+            _seasonStartYear,
             _seasonStartMonth,
+            _seasonEndYear,
             _seasonEndMonth,
           ),
         ]);
@@ -1405,7 +1454,9 @@ class _PrintScreenState extends State<PrintScreen> {
   pw.Widget _buildMonthlyStatsPage(
     Player player,
     AppProvider provider,
+    int startYear,  // シーズン開始年
     int startMonth, // シーズン開始月 (1〜12)
+    int endYear,    // シーズン終了年
     int endMonth,   // シーズン終了月 (1〜12)
   ) {
     // ── シーズン月リストを生成 ──
@@ -1420,86 +1471,18 @@ class _PrintScreenState extends State<PrintScreen> {
       if (months.length > 12) break; // 無限ループ防止
     }
 
-    // ── 各月に対して「実際に年を確定する」マップを作る ──
-    // アプローチ: 試合データから「年月 → 件数」マップを作り、
-    //             シーズンの各月に対して、データが存在する年を特定する。
-    //             同じ月に複数年のデータがある場合は最も古い年を採用。
-
-    // まず試合データから「年月セット」を構築
-    final matchDateMap = {for (final m in provider.matches) m.id: m.date};
-
-    // 選手のサーブ記録から実際の試合年月を収集
-    final playerMatchIds = <String>{};
-    for (final rec in provider.matches) {
-      playerMatchIds.add(rec.id);
-    }
-
-    // 全試合の年月リスト（重複除去）
-    final allYearMonths = provider.matches
-        .map((m) => DateTime(m.date.year, m.date.month))
-        .toSet()
-        .toList()
-      ..sort();
-
-    // 各月に対して「どの年のデータか」を決定する
-    // シーズン内の各月について: データが存在する年の中で最も合理的な年を選ぶ
-    final monthToYear = <int, int>{};
-
-    if (allYearMonths.isNotEmpty) {
-      // 実データから各月の年を決定
-      for (final mo in months) {
-        // その月に実際にデータが存在する年の一覧
-        final yearsWithData = allYearMonths
-            .where((ym) => ym.month == mo)
-            .map((ym) => ym.year)
-            .toList()
-          ..sort();
-
-        if (yearsWithData.isNotEmpty) {
-          // dateRangeが指定されている場合は範囲内の年を優先
-          if (widget.dateRange != null) {
-            final rangeStartYear = widget.dateRange!.start.year;
-            final rangeEndYear = widget.dateRange!.end.year;
-            // 範囲内の年を探す
-            final inRange = yearsWithData
-                .where((y) => y >= rangeStartYear && y <= rangeEndYear)
-                .toList();
-            monthToYear[mo] = inRange.isNotEmpty ? inRange.first : yearsWithData.first;
-          } else {
-            // 全期間: 最も新しいデータ（直近シーズン）を使う
-            monthToYear[mo] = yearsWithData.last;
-          }
-        }
-      }
-
-      // データがない月は隣接する月の年から補間
-      for (final mo in months) {
-        if (!monthToYear.containsKey(mo)) {
-          // データある月の年を参考に補間
-          // 年またぎシーズンの場合、月の位置で年を決める
-          final referenceYear = monthToYear.values.isNotEmpty
-              ? monthToYear.values.reduce((a, b) => a < b ? a : b)
-              : DateTime.now().year;
-          if (startMonth > endMonth) {
-            monthToYear[mo] = mo >= startMonth ? referenceYear : referenceYear + 1;
-          } else {
-            monthToYear[mo] = referenceYear;
-          }
-        }
-      }
-    } else {
-      // データが全くない場合: 現在年ベースで補間
-      final now = DateTime.now();
-      for (final mo in months) {
-        if (startMonth > endMonth) {
-          monthToYear[mo] = mo >= startMonth ? now.year : now.year + 1;
-        } else {
-          monthToYear[mo] = now.year;
-        }
+    // ── 年決定：ユーザー指定の startYear / endYear を直接使う ──
+    // 年またぎ（例: 11月〜10月）: startMonth以上 → startYear, それ未満 → endYear
+    // 同一年内（例: 4月〜9月）   : 常に startYear（= endYear のはず）
+    int yearForMonth(int month) {
+      if (startMonth > endMonth) {
+        // 年またぎシーズン
+        return month >= startMonth ? startYear : endYear;
+      } else {
+        // 同一年内シーズン
+        return startYear;
       }
     }
-
-    int yearForMonth(int month) => monthToYear[month] ?? DateTime.now().year;
 
     // 月ごとの統計を計算
     // _monthLabel : 表示ラベル（例: "11月", "1月\n(翌年)"）
@@ -1624,9 +1607,7 @@ class _PrintScreenState extends State<PrintScreen> {
       ], highlights: [false, false, total > 0, false, false]));
     }
 
-    // シーズンラベル（年付き・実データから年を取得）
-    final startYear = yearForMonth(startMonth);
-    final endYear   = yearForMonth(endMonth);
+    // シーズンラベル（ユーザー指定の年をそのまま使用）
     final seasonLabel = startYear == endYear
         ? '$startYear年$startMonth月〜$endMonth月'
         : '$startYear年$startMonth月〜$endYear年$endMonth月';
