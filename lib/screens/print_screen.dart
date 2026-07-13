@@ -1420,38 +1420,73 @@ class _PrintScreenState extends State<PrintScreen> {
       if (months.length > 12) break; // 無限ループ防止
     }
 
-    // ── 基準年：表示名用に「月が開始月より小さい = 翌年」と判定する ──
-    // 現在の年を基準とし、開始月〜12月は今年、1月〜終了月は翌年として扱う
-    final now = DateTime.now();
-    final baseYear = now.year;
+    // ── 基準年を正しく決定する ──
+    // 優先順位:
+    //   1. widget.dateRange が指定されている → 開始日の年を基準年とする
+    //   2. 全期間 → 試合データの最も古い試合日から推定する
+    //   3. データがない → 現在年
+    final int baseYear;
+    if (widget.dateRange != null) {
+      // 期間指定あり: dateRange.startの年を基準に
+      // 年またぎの場合 (startMonth > endMonth)、
+      // dateRange.startの月がstartMonth以前なら前年が基準
+      final rangeStart = widget.dateRange!.start;
+      if (startMonth > endMonth && rangeStart.month < startMonth) {
+        // 例: シーズン11〜10月, rangeStart=2026/4月 → baseYear=2025
+        baseYear = rangeStart.year - 1;
+      } else {
+        baseYear = rangeStart.year;
+      }
+    } else {
+      // 全期間: 試合データの最古の日付から推定
+      final allDates = provider.matches.map((m) => m.date).toList();
+      if (allDates.isNotEmpty) {
+        allDates.sort();
+        final oldest = allDates.first;
+        // 年またぎシーズン（例: 11月〜10月）の場合
+        // 最古の試合月がstartMonth以降 → その年がbaseYear
+        // 最古の試合月がstartMonthより前 → 前年がbaseYear
+        if (startMonth > endMonth && oldest.month < startMonth) {
+          baseYear = oldest.year - 1;
+        } else {
+          baseYear = oldest.year;
+        }
+      } else {
+        baseYear = DateTime.now().year;
+      }
+    }
+
+    // ── 各月の実際の年を計算する関数 ──
+    // baseYearのstartMonthから始まり、年またぎは翌年(baseYear+1)になる
+    int yearForMonth(int month) {
+      if (startMonth > endMonth) {
+        // 年またぎシーズン（例: 11月〜10月）
+        // startMonth以降の月 → baseYear、それ以前の月 → baseYear+1
+        return month >= startMonth ? baseYear : baseYear + 1;
+      } else {
+        // 同一年内シーズン（例: 4月〜9月）
+        return baseYear;
+      }
+    }
 
     // 月ごとの統計を計算
-    // _monthLabel : 表示ラベル（例: "11月", "12月", "1月(翌)"）
+    // _monthLabel : 表示ラベル（例: "11月", "1月\n(翌年)"）
     String monthLabel(int month) {
-      if (startMonth > endMonth) {
-        // 年をまたぐシーズン（例: 11〜10月）
-        if (month >= startMonth) return '$month月';
+      if (startMonth > endMonth && month < startMonth) {
         return '$month月\n(翌年)';
-      } else {
-        return '$month月';
       }
+      return '$month月';
     }
 
     // 月ごとのfrom/to (match.date基準)
     DateTime monthFrom(int month) {
-      final year = (startMonth > endMonth && month < startMonth)
-          ? baseYear + 1
-          : baseYear;
-      return DateTime(year, month, 1);
+      return DateTime(yearForMonth(month), month, 1);
     }
 
     DateTime monthTo(int month) {
-      final year = (startMonth > endMonth && month < startMonth)
-          ? baseYear + 1
-          : baseYear;
+      final year = yearForMonth(month);
       // 翌月1日 = その月の終わり
-      final next = month == 12 ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
-      return next;
+      return month == 12 ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
     }
 
     // セル値計算ヘルパー
@@ -1557,10 +1592,12 @@ class _PrintScreenState extends State<PrintScreen> {
       ], highlights: [false, false, total > 0, false, false]));
     }
 
-    // シーズンラベル
-    final seasonLabel = startMonth <= endMonth
-        ? '$startMonth月〜$endMonth月'
-        : '$startMonth月〜翌$endMonth月';
+    // シーズンラベル（年付き）
+    final startYear = baseYear;
+    final endYear = (startMonth > endMonth) ? baseYear + 1 : baseYear;
+    final seasonLabel = startYear == endYear
+        ? '$startYear年$startMonth月〜$endMonth月'
+        : '$startYear年$startMonth月〜$endYear年$endMonth月';
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
