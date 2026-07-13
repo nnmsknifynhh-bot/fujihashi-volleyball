@@ -38,12 +38,17 @@ class PrintScreen extends StatefulWidget {
 }
 
 class _PrintScreenState extends State<PrintScreen> {
-  // ─── チェックボックス（削除3件・修正2件後の最終構成）──────────────
+  // ─── チェックボックス ────────────────────────────────────────────
   bool _inclPlayerStats = true;      // 選手別成績（サーブ+レシーブ+AI講評）
   bool _inclServeRanking = true;     // サーブランキング
   bool _inclReceiveRanking = true;   // サーブレシーブランキング
   bool _inclPercentage = true;       // 割合（%）表示
   bool _inclOpponentAnalysis = true; // 対戦相手別分析
+  bool _inclMonthlyStats = true;     // 月別成績表
+
+  // 月別成績表のシーズン設定（11月〜翌10月がデフォルト）
+  int _seasonStartMonth = 11; // 開始月（1〜12）
+  int _seasonEndMonth = 10;   // 終了月（1〜12）
 
   // 対戦相手別分析の選択状態（複数選択対応・空=全対戦相手）
   Set<String> _selectedOpponents = {};
@@ -138,6 +143,70 @@ class _PrintScreenState extends State<PrintScreen> {
                     if (!v) _selectedOpponents = {};
                   }),
                 ),
+
+                // 月別成績表
+                _buildCheckTile(
+                  '月別成績表',
+                  '選手ごとの月別エース率・崩し率・ミス率・オーバー率',
+                  Icons.calendar_month,
+                  _inclMonthlyStats,
+                  (v) => setState(() => _inclMonthlyStats = v),
+                ),
+
+                // シーズン月設定（_inclMonthlyStatsがtrueの時のみ表示）
+                if (_inclMonthlyStats) ...[
+                  Container(
+                    margin: const EdgeInsets.only(left: 16, right: 8, bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.cardBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.primaryRed.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'シーズン期間',
+                          style: TextStyle(
+                              color: AppTheme.gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Text('開始月',
+                                style: TextStyle(
+                                    color: AppTheme.lightGrey, fontSize: 12)),
+                            const SizedBox(width: 8),
+                            _monthDropdown(
+                              _seasonStartMonth,
+                              (v) => setState(() => _seasonStartMonth = v),
+                            ),
+                            const SizedBox(width: 16),
+                            const Text('終了月',
+                                style: TextStyle(
+                                    color: AppTheme.lightGrey, fontSize: 12)),
+                            const SizedBox(width: 8),
+                            _monthDropdown(
+                              _seasonEndMonth,
+                              (v) => setState(() => _seasonEndMonth = v),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '例）11月〜翌10月（デフォルト: 11月〜10月）',
+                          style: TextStyle(
+                              color: AppTheme.grey, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // 対戦相手選択ドロップダウン（_inclOpponentAnalysisがtrueの時のみ表示）
                 if (_inclOpponentAnalysis) ...[
@@ -386,6 +455,35 @@ class _PrintScreenState extends State<PrintScreen> {
     );
   }
 
+  // 月選択ドロップダウン（1〜12月）
+  Widget _monthDropdown(int currentMonth, ValueChanged<int> onChanged) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg2,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF555555)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: currentMonth,
+          dropdownColor: AppTheme.cardBg2,
+          style: const TextStyle(color: AppTheme.white, fontSize: 13),
+          items: List.generate(12, (i) => i + 1).map((m) {
+            return DropdownMenuItem(
+              value: m,
+              child: Text('$m月',
+                  style: const TextStyle(color: AppTheme.white, fontSize: 13)),
+            );
+          }).toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _infoRow(IconData icon, String text) {
     return Row(
       children: [
@@ -515,6 +613,21 @@ class _PrintScreenState extends State<PrintScreen> {
         }
       }
     }
+
+    // 月別成績表（選手1人1ページ）
+    if (_inclMonthlyStats) {
+      for (final player in data.players) {
+        addOnePage([
+          _buildMonthlyStatsPage(
+            player,
+            provider,
+            _seasonStartMonth,
+            _seasonEndMonth,
+          ),
+        ]);
+      }
+    }
+
     // サーブランキング
     if (_inclServeRanking) {
       addOnePage([_buildServeRankPage(data)]);
@@ -1283,6 +1396,235 @@ class _PrintScreenState extends State<PrintScreen> {
               ]),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  // ── 月別成績表ページ（選手1人ずつ・縦=月・横=指標）─────────────────
+  pw.Widget _buildMonthlyStatsPage(
+    Player player,
+    AppProvider provider,
+    int startMonth, // シーズン開始月 (1〜12)
+    int endMonth,   // シーズン終了月 (1〜12)
+  ) {
+    // ── シーズン月リストを生成 ──
+    // 例) start=11, end=10 → [11,12,1,2,...,10]（12ヶ月）
+    // 例) start=4, end=9 → [4,5,6,7,8,9]（6ヶ月）
+    final months = <int>[];
+    int m = startMonth;
+    while (true) {
+      months.add(m);
+      if (m == endMonth) break;
+      m = m % 12 + 1;
+      if (months.length > 12) break; // 無限ループ防止
+    }
+
+    // ── 基準年：表示名用に「月が開始月より小さい = 翌年」と判定する ──
+    // 現在の年を基準とし、開始月〜12月は今年、1月〜終了月は翌年として扱う
+    final now = DateTime.now();
+    final baseYear = now.year;
+
+    // 月ごとの統計を計算
+    // _monthLabel : 表示ラベル（例: "11月", "12月", "1月(翌)"）
+    String monthLabel(int month) {
+      if (startMonth > endMonth) {
+        // 年をまたぐシーズン（例: 11〜10月）
+        if (month >= startMonth) return '$month月';
+        return '$month月\n(翌年)';
+      } else {
+        return '$month月';
+      }
+    }
+
+    // 月ごとのfrom/to (match.date基準)
+    DateTime monthFrom(int month) {
+      final year = (startMonth > endMonth && month < startMonth)
+          ? baseYear + 1
+          : baseYear;
+      return DateTime(year, month, 1);
+    }
+
+    DateTime monthTo(int month) {
+      final year = (startMonth > endMonth && month < startMonth)
+          ? baseYear + 1
+          : baseYear;
+      // 翌月1日 = その月の終わり
+      final next = month == 12 ? DateTime(year + 1, 1, 1) : DateTime(year, month + 1, 1);
+      return next;
+    }
+
+    // セル値計算ヘルパー
+    String servePct(Map<ServeResult, int> s, ServeResult key) {
+      final total = s.values.fold(0, (a, b) => a + b);
+      if (total == 0) return '-';
+      return '${((s[key] ?? 0) / total * 100).toStringAsFixed(1)}%';
+    }
+
+    String recvPct(Map<ReceiveResult, int> r, ReceiveResult key) {
+      final total = r.values.fold(0, (a, b) => a + b);
+      if (total == 0) return '-';
+      return '${((r[key] ?? 0) / total * 100).toStringAsFixed(1)}%';
+    }
+
+    String serveTotal(Map<ServeResult, int> s) {
+      final t = s.values.fold(0, (a, b) => a + b);
+      return t > 0 ? '$t本' : '-';
+    }
+
+    String recvTotal(Map<ReceiveResult, int> r) {
+      final t = r.values.fold(0, (a, b) => a + b);
+      return t > 0 ? '$t本' : '-';
+    }
+
+    // ヘッダー行（背景: 濃い赤）
+    pw.TableRow headerRow(List<String> labels, {PdfColor bg = PdfColors.red900}) {
+      return pw.TableRow(
+        decoration: pw.BoxDecoration(color: bg),
+        children: labels.map((l) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+          child: pw.Text(l,
+              style: pw.TextStyle(
+                  fontNormal: _regularFont, fontBold: _boldFont,
+                  fontSize: 7, color: PdfColors.white),
+              textAlign: pw.TextAlign.center),
+        )).toList(),
+      );
+    }
+
+    // データ行
+    pw.TableRow dataRow(int rowIdx, List<String> values,
+        {List<bool>? highlights}) {
+      final bg = rowIdx.isEven ? PdfColors.white : const PdfColor(0.96, 0.96, 0.96);
+      return pw.TableRow(
+        decoration: pw.BoxDecoration(color: bg),
+        children: values.asMap().entries.map((e) {
+          final hi = highlights != null && e.key < highlights.length
+              ? highlights[e.key]
+              : false;
+          return pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+            child: pw.Text(e.value,
+                style: pw.TextStyle(
+                    fontNormal: _regularFont, fontBold: _boldFont,
+                    fontSize: 7.5,
+                    color: hi ? PdfColors.red900 : PdfColors.black),
+                textAlign: pw.TextAlign.center),
+          );
+        }).toList(),
+      );
+    }
+
+    // ── サーブ月別表 ──
+    final serveRows = <pw.TableRow>[
+      headerRow(['月', 'サーブ数', 'エース率', '崩し率', 'ミス率']),
+    ];
+    for (var i = 0; i < months.length; i++) {
+      final mo = months[i];
+      final s = provider.getServeStatsByPlayer(
+        player.id,
+        from: monthFrom(mo),
+        to: monthTo(mo),
+      );
+      final total = s.values.fold(0, (a, b) => a + b);
+      serveRows.add(dataRow(i, [
+        monthLabel(mo),
+        serveTotal(s),
+        servePct(s, ServeResult.ace),
+        servePct(s, ServeResult.under),
+        servePct(s, ServeResult.miss),
+      ], highlights: [false, false, total > 0, false, false]));
+    }
+
+    // ── レシーブ月別表 ──
+    final recvRows = <pw.TableRow>[
+      headerRow(['月', 'レシーブ数', 'オーバー率', 'アンダー率', 'ミス率']),
+    ];
+    for (var i = 0; i < months.length; i++) {
+      final mo = months[i];
+      final r = provider.getReceiveStatsByPlayer(
+        player.id,
+        from: monthFrom(mo),
+        to: monthTo(mo),
+      );
+      final total = r.values.fold(0, (a, b) => a + b);
+      recvRows.add(dataRow(i, [
+        monthLabel(mo),
+        recvTotal(r),
+        recvPct(r, ReceiveResult.over),
+        recvPct(r, ReceiveResult.under),
+        recvPct(r, ReceiveResult.miss),
+      ], highlights: [false, false, total > 0, false, false]));
+    }
+
+    // シーズンラベル
+    final seasonLabel = startMonth <= endMonth
+        ? '$startMonth月〜$endMonth月'
+        : '$startMonth月〜翌$endMonth月';
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // 選手名ヘッダー（個人票と同じスタイル）
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          margin: const pw.EdgeInsets.only(bottom: 10),
+          decoration: const pw.BoxDecoration(
+            color: PdfColors.red900,
+            borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+          ),
+          child: pw.Row(
+            children: [
+              pw.Text(
+                player.number.isNotEmpty ? '#${player.number}  ' : '',
+                style: pw.TextStyle(
+                    fontNormal: _regularFont, fontBold: _boldFont,
+                    fontSize: 10, color: PdfColors.amber200),
+              ),
+              pw.Text(
+                player.name,
+                style: pw.TextStyle(
+                    fontNormal: _regularFont, fontBold: _boldFont,
+                    fontSize: 13, color: PdfColors.white),
+              ),
+              pw.Spacer(),
+              pw.Text(
+                '月別成績表  $seasonLabel',
+                style: pw.TextStyle(
+                    fontNormal: _regularFont, fontBold: _boldFont,
+                    fontSize: 9, color: PdfColors.amber100),
+              ),
+            ],
+          ),
+        ),
+
+        // ── サーブ月別 ──
+        _sectionTitle('サーブ月別成績'),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(1.6), // 月
+            1: pw.FlexColumnWidth(1.6), // 本数
+            2: pw.FlexColumnWidth(1.6), // エース率
+            3: pw.FlexColumnWidth(1.6), // 崩し率
+            4: pw.FlexColumnWidth(1.6), // ミス率
+          },
+          children: serveRows,
+        ),
+        pw.SizedBox(height: 14),
+
+        // ── レシーブ月別 ──
+        _sectionTitle('レシーブ月別成績'),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(1.6),
+            1: pw.FlexColumnWidth(1.6),
+            2: pw.FlexColumnWidth(1.6),
+            3: pw.FlexColumnWidth(1.6),
+            4: pw.FlexColumnWidth(1.6),
+          },
+          children: recvRows,
         ),
       ],
     );
