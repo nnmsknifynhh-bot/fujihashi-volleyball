@@ -814,6 +814,31 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     fontWeight: FontWeight.bold),
               ),
               const Spacer(),
+              // 名前・背番号変更ボタン
+              GestureDetector(
+                onTap: () => _showRenameDialog(context, player, provider),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.gold.withValues(alpha: 0.5)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.edit, color: AppTheme.gold, size: 12),
+                      SizedBox(width: 4),
+                      Text('名前変更',
+                          style: TextStyle(
+                              color: AppTheme.gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => setState(() => _editPlayerId = null),
                 child: const Icon(Icons.close,
@@ -957,6 +982,77 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+  // ─── 名前・背番号変更ダイアログ ────────────────────────────────────
+  Future<void> _showRenameDialog(
+      BuildContext context, Player player, AppProvider provider) async {
+    final nameCtrl = TextEditingController(text: player.name);
+    final numberCtrl = TextEditingController(text: player.number);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardBg,
+        title: Row(
+          children: [
+            Container(
+                width: 4,
+                height: 24,
+                color: AppTheme.gold,
+                margin: const EdgeInsets.only(right: 8)),
+            const Text('選手情報を変更',
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: const InputDecoration(
+                labelText: '選手名',
+                prefixIcon:
+                    Icon(Icons.person, color: AppTheme.gold, size: 18),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: numberCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+              decoration: const InputDecoration(
+                labelText: '背番号（任意）',
+                prefixIcon:
+                    Icon(Icons.tag, color: AppTheme.grey, size: 18),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('キャンセル',
+                style: TextStyle(color: AppTheme.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.gold),
+            onPressed: () async {
+              final newName = nameCtrl.text.trim();
+              if (newName.isEmpty) return;
+              player.name = newName;
+              player.number = numberCtrl.text.trim();
+              await provider.updatePlayer(player);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存',
+                style: TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
