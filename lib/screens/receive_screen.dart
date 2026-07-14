@@ -717,137 +717,154 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     );
   }
 
-  // ─── 選手選択ピッカー（ダイアログ）────────────────────────────────
+  // ─── 選手選択ピッカー（BottomSheet・スクロール対応）──────────────
   void _showPlayerPicker(
       BuildContext context, int posIdx, List<Player> teamPlayers) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.cardBg,
+      // 画面の最大90%まで高さを使えるようにする（スクロール必須）
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ハンドル
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.grey.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.sports_volleyball,
-                        color: AppTheme.gold, size: 18),
-                    const SizedBox(width: 8),
-                    Text('${_posLabels[posIdx]} の選手を選択',
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 15,
-                            fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-              const Divider(color: Color(0xFF333333), height: 1),
-              // 空き（未割り当て）
-              ListTile(
-                leading: Container(
-                  width: 36, height: 36,
+        // 画面高さの最大90%に制限
+        final maxHeight = MediaQuery.of(ctx).size.height * 0.9;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── ヘッダー（固定） ──────────────────────────────
+                // ハンドル
+                Container(
+                  width: 40, height: 4,
+                  margin: const EdgeInsets.only(top: 10, bottom: 8),
                   decoration: BoxDecoration(
-                    color: AppTheme.cardBg2,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.grey),
+                    color: AppTheme.grey.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: const Icon(Icons.person_off,
-                      color: AppTheme.grey, size: 18),
                 ),
-                title: const Text('空き（未割り当て）',
-                    style: TextStyle(color: AppTheme.grey, fontSize: 14)),
-                onTap: () {
-                  setState(() => _posPlayers[posIdx] = null);
-                  Navigator.pop(ctx);
-                },
-              ),
-              const Divider(color: Color(0xFF222222), height: 1),
-              // Aチームの選手一覧
-              ...teamPlayers.map((player) {
-                final isCurrentlyAssigned =
-                    _posPlayers[posIdx]?.id == player.id;
-                // 他のポジションで使用中かチェック
-                final usedAtPos = _posPlayers.indexWhere(
-                    (p) => p?.id == player.id);
-                final isUsedElsewhere =
-                    usedAtPos != -1 && usedAtPos != posIdx;
-
-                return ListTile(
-                  leading: Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(
-                      color: isCurrentlyAssigned
-                          ? AppTheme.gold.withValues(alpha: 0.2)
-                          : isUsedElsewhere
-                              ? AppTheme.primaryRed.withValues(alpha: 0.1)
-                              : AppTheme.primaryRed.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isCurrentlyAssigned
-                            ? AppTheme.gold
-                            : isUsedElsewhere
-                                ? AppTheme.grey
-                                : AppTheme.primaryRed,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        player.number.isNotEmpty ? '#${player.number}' : '?',
-                        style: TextStyle(
-                          color: isCurrentlyAssigned
-                              ? AppTheme.gold
-                              : isUsedElsewhere
-                                  ? AppTheme.grey
-                                  : AppTheme.primaryRed,
-                          fontSize: 11, fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  title: Text(player.name,
-                      style: TextStyle(
-                        color: isUsedElsewhere
-                            ? AppTheme.grey : Colors.white,
-                        fontSize: 15, fontWeight: FontWeight.bold,
-                      )),
-                  subtitle: isUsedElsewhere
-                      ? Text(
-                          '${_posLabels[usedAtPos]} に配置中',
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sports_volleyball,
+                          color: AppTheme.gold, size: 18),
+                      const SizedBox(width: 8),
+                      Text('${_posLabels[posIdx]} の選手を選択',
                           style: const TextStyle(
-                              color: AppTheme.grey, fontSize: 11))
-                      : null,
-                  trailing: isCurrentlyAssigned
-                      ? const Icon(Icons.check_circle,
-                          color: AppTheme.gold, size: 20)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      // 他のポジションに同じ選手がいたら入れ替え
-                      if (isUsedElsewhere) {
-                        final currentPlayer = _posPlayers[posIdx];
-                        _posPlayers[usedAtPos] = currentPlayer;
-                      }
-                      _posPlayers[posIdx] = player;
-                    });
-                    Navigator.pop(ctx);
-                  },
-                );
-              }),
-              const SizedBox(height: 8),
-            ],
+                              color: Colors.white, fontSize: 15,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const Divider(color: Color(0xFF333333), height: 1),
+
+                // ── スクロール可能なリスト ────────────────────────
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      // 空き（未割り当て）
+                      ListTile(
+                        leading: Container(
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.cardBg2,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.grey),
+                          ),
+                          child: const Icon(Icons.person_off,
+                              color: AppTheme.grey, size: 18),
+                        ),
+                        title: const Text('空き（未割り当て）',
+                            style: TextStyle(color: AppTheme.grey, fontSize: 14)),
+                        onTap: () {
+                          setState(() => _posPlayers[posIdx] = null);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                      const Divider(color: Color(0xFF222222), height: 1),
+
+                      // Aチームの選手一覧
+                      ...teamPlayers.map((player) {
+                        final isCurrentlyAssigned =
+                            _posPlayers[posIdx]?.id == player.id;
+                        final usedAtPos = _posPlayers.indexWhere(
+                            (p) => p?.id == player.id);
+                        final isUsedElsewhere =
+                            usedAtPos != -1 && usedAtPos != posIdx;
+
+                        return ListTile(
+                          leading: Container(
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(
+                              color: isCurrentlyAssigned
+                                  ? AppTheme.gold.withValues(alpha: 0.2)
+                                  : isUsedElsewhere
+                                      ? AppTheme.primaryRed.withValues(alpha: 0.1)
+                                      : AppTheme.primaryRed.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isCurrentlyAssigned
+                                    ? AppTheme.gold
+                                    : isUsedElsewhere
+                                        ? AppTheme.grey
+                                        : AppTheme.primaryRed,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                player.number.isNotEmpty
+                                    ? '#${player.number}' : '?',
+                                style: TextStyle(
+                                  color: isCurrentlyAssigned
+                                      ? AppTheme.gold
+                                      : isUsedElsewhere
+                                          ? AppTheme.grey
+                                          : AppTheme.primaryRed,
+                                  fontSize: 11, fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          title: Text(player.name,
+                              style: TextStyle(
+                                color: isUsedElsewhere
+                                    ? AppTheme.grey : Colors.white,
+                                fontSize: 15, fontWeight: FontWeight.bold,
+                              )),
+                          subtitle: isUsedElsewhere
+                              ? Text(
+                                  '${_posLabels[usedAtPos]} に配置中',
+                                  style: const TextStyle(
+                                      color: AppTheme.grey, fontSize: 11))
+                              : null,
+                          trailing: isCurrentlyAssigned
+                              ? const Icon(Icons.check_circle,
+                                  color: AppTheme.gold, size: 20)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              if (isUsedElsewhere) {
+                                final currentPlayer = _posPlayers[posIdx];
+                                _posPlayers[usedAtPos] = currentPlayer;
+                              }
+                              _posPlayers[posIdx] = player;
+                            });
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
