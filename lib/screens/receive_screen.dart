@@ -10,18 +10,12 @@ import '../utils/app_theme.dart';
 //   バレーボールのレシーブ隊形でコート上に選手を配置し、
 //   各選手をタップ＆フリックして結果入力する。
 //
-// 画面レイアウト（上=ネット）:
-//   [前衛中]          ← sortOrder=0 or 先頭
-//   [中衛左] [中衛中] [中衛右]
-//   [後衛左]          [後衛右]
+// ポジション（6マス）:
+//   pos 0: 前衛中央
+//   pos 1: 中衛左   pos 2: 中衛中央   pos 3: 中衛右
+//   pos 4: 後衛左                     pos 5: 後衛右
 //
-// ポジション割り当て: sortOrder の順番で 0〜5 に対応
-//   index 0 → 前衛中央
-//   index 1 → 中衛左
-//   index 2 → 中衛中央
-//   index 3 → 中衛右
-//   index 4 → 後衛左
-//   index 5 → 後衛右
+// 各ポジションはAチームの選手から自由に割り当て可能。
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ReceiveScreen extends StatefulWidget {
@@ -33,16 +27,29 @@ class ReceiveScreen extends StatefulWidget {
 
 class _ReceiveScreenState extends State<ReceiveScreen>
     with TickerProviderStateMixin {
-  // フリック状態（選手IDごと）
-  final Map<String, Offset?> _flickStarts = {};
-  final Map<String, ReceiveResult?> _previews = {};
 
-  // フラッシュアニメーション（選手IDごと）
-  final Map<String, AnimationController> _flashCtrls = {};
-  final Map<String, ReceiveResult?> _flashResults = {};
+  // ポジション割り当て（index 0〜5 → Player?）
+  // null = 未割り当て（空きスロット）
+  final List<Player?> _posPlayers = List.filled(6, null);
 
-  // 修正パネルを開いている選手ID
-  String? _editPlayerId;
+  // ポジション名ラベル
+  static const _posLabels = [
+    '前衛中', '中衛左', '中衛中', '中衛右', '後衛左', '後衛右',
+  ];
+
+  // フリック状態（ポジションindexごと）
+  final Map<int, Offset?> _flickStarts = {};
+  final Map<int, ReceiveResult?> _previews = {};
+
+  // フラッシュアニメーション（ポジションindexごと）
+  final Map<int, AnimationController> _flashCtrls = {};
+  final Map<int, ReceiveResult?> _flashResults = {};
+
+  // 修正パネルを開いているポジションindex
+  int? _editPosIdx;
+
+  // 初回ロード時に自動割り当て済みか
+  bool _autoAssigned = false;
 
   @override
   void dispose() {
@@ -52,15 +59,24 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     super.dispose();
   }
 
-  // AnimationController を選手ごとに遅延生成
-  AnimationController _ctrl(String playerId) {
+  // AnimationController を遅延生成
+  AnimationController _ctrl(int posIdx) {
     return _flashCtrls.putIfAbsent(
-      playerId,
+      posIdx,
       () => AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 500),
       ),
     );
+  }
+
+  // Aチームの選手リストが来たとき、初回のみ自動割り当て
+  void _autoAssignIfNeeded(List<Player> teamPlayers) {
+    if (_autoAssigned) return;
+    _autoAssigned = true;
+    for (int i = 0; i < 6 && i < teamPlayers.length; i++) {
+      _posPlayers[i] = teamPlayers[i];
+    }
   }
 
   // ─── ユーティリティ ───────────────────────────────────────────────
@@ -86,7 +102,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     switch (r) {
       case ReceiveResult.over:   return 'オーバー';
       case ReceiveResult.under:  return 'アンダー';
-      case ReceiveResult.direct: return '二段\nダイレクト';
+      case ReceiveResult.direct: return '二段\nDirect';
       case ReceiveResult.miss:   return 'ミス';
     }
   }
@@ -100,7 +116,6 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     }
   }
 
-  // フリック方向判定（threshold=18px）
   ReceiveResult? _detect(Offset delta) {
     const t = 18.0;
     if (delta.distance < t) return null;
@@ -111,17 +126,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     return ReceiveResult.under;
   }
 
-  void _triggerFlash(String playerId, ReceiveResult r) {
-    setState(() => _flashResults[playerId] = r);
-    _ctrl(playerId).forward(from: 0);
+  void _triggerFlash(int posIdx, ReceiveResult r) {
+    setState(() => _flashResults[posIdx] = r);
+    _ctrl(posIdx).forward(from: 0);
   }
-
-  // ─── ポジション割り当て ───────────────────────────────────────────
-  // players を sortOrder でソート済みと仮定し、index で位置を決める
-  // 6ポジション定義（フレックスグリッドで配置）
-  // row0: [_, p0, _]   前衛中
-  // row1: [p1, p2, p3] 中衛
-  // row2: [p4, _, p5]  後衛
 
   // ─── build ────────────────────────────────────────────────────────
   @override
@@ -129,7 +137,10 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     return Consumer<AppProvider>(
       builder: (context, provider, _) {
         final match = provider.currentMatch;
-        final players = provider.currentTeamPlayers; // sortOrder順
+        final teamPlayers = provider.currentTeamPlayers;
+
+        // 初回のみ自動割り当て
+        _autoAssignIfNeeded(teamPlayers);
 
         return Scaffold(
           backgroundColor: AppTheme.black,
@@ -138,11 +149,11 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               _buildHeader(provider, match),
               if (match == null)
                 const Expanded(child: _NoMatch())
-              else if (players.isEmpty)
+              else if (teamPlayers.isEmpty)
                 const Expanded(child: _NoPlayers())
               else
                 Expanded(
-                  child: _buildCourt(context, provider, match, players),
+                  child: _buildCourt(context, provider, match, teamPlayers),
                 ),
             ],
           ),
@@ -180,22 +191,17 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     borderRadius: BorderRadius.circular(4)),
                 child: const Text('RECEIVE',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2)),
+                        color: Colors.white, fontSize: 11,
+                        fontWeight: FontWeight.bold, letterSpacing: 2)),
               ),
               const SizedBox(width: 8),
               const Text('サーブレシーブ記録',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
+                  style: TextStyle(color: Colors.white, fontSize: 18,
                       fontWeight: FontWeight.bold)),
               const Spacer(),
               if (match != null)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: provider.currentTeam == 'A'
                         ? AppTheme.primaryRed.withValues(alpha: 0.2)
@@ -203,39 +209,31 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
                       color: provider.currentTeam == 'A'
-                          ? AppTheme.primaryRed
-                          : Colors.blue,
+                          ? AppTheme.primaryRed : Colors.blue,
                     ),
                   ),
                   child: Text('${provider.currentTeam}チーム',
                       style: TextStyle(
                           color: provider.currentTeam == 'A'
-                              ? AppTheme.primaryRed
-                              : Colors.blue,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold)),
+                              ? AppTheme.primaryRed : Colors.blue,
+                          fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
             ],
           ),
           if (match != null) ...[
             const SizedBox(height: 4),
             Row(children: [
-              Container(
-                  width: 7, height: 7,
-                  decoration:
-                      BoxDecoration(color: oc, shape: BoxShape.circle)),
+              Container(width: 7, height: 7,
+                  decoration: BoxDecoration(color: oc, shape: BoxShape.circle)),
               const SizedBox(width: 6),
               Text('vs ${match.opponent}',
-                  style: const TextStyle(
-                      color: AppTheme.gold,
-                      fontSize: 13,
+                  style: const TextStyle(color: AppTheme.gold, fontSize: 13,
                       fontWeight: FontWeight.bold)),
               const SizedBox(width: 12),
               Consumer<AppProvider>(
                 builder: (_, p, __) => Text(
                   '総記録: ${p.getReceiveRecordsByMatch(match.id).length}本',
-                  style:
-                      const TextStyle(color: AppTheme.grey, fontSize: 12)),
+                  style: const TextStyle(color: AppTheme.grey, fontSize: 12)),
               ),
             ]),
           ],
@@ -246,25 +244,19 @@ class _ReceiveScreenState extends State<ReceiveScreen>
 
   // ─── コート全体 ───────────────────────────────────────────────────
   Widget _buildCourt(BuildContext context, AppProvider provider,
-      dynamic match, List<Player> players) {
+      dynamic match, List<Player> teamPlayers) {
     final matchId = match.id;
     final records = provider.getReceiveRecordsByMatch(matchId);
-
-    // 最大6名まで使用（足りない場合はその分だけ表示）
-    final p = players.take(6).toList();
-
-    // 選手を取得するヘルパー（インデックス越えは null）
-    Player? at(int i) => i < p.length ? p[i] : null;
 
     return Column(
       children: [
         // ネットライン
         _netBar(),
 
-        // コートエリア（Expanded で残り高さをすべて使う）
+        // コートエリア
         Expanded(
           child: Container(
-            color: const Color(0xFF0D1A0D), // 暗い緑
+            color: const Color(0xFF0D1A0D),
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             child: Column(
               children: [
@@ -276,79 +268,55 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                       const Expanded(flex: 1, child: SizedBox()),
                       Expanded(
                         flex: 2,
-                        child: at(0) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(0)!, records)
-                            : const SizedBox(),
+                        child: _posCell(context, provider, matchId,
+                            posIdx: 0, teamPlayers: teamPlayers, records: records),
                       ),
                       const Expanded(flex: 1, child: SizedBox()),
                     ],
                   ),
                 ),
                 const SizedBox(height: 6),
-                // 中衛行：左・中・右 3人
+                // 中衛行：3人
                 Expanded(
                   flex: 3,
                   child: Row(
                     children: [
-                      Expanded(
-                        child: at(1) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(1)!, records)
-                            : const SizedBox(),
-                      ),
+                      Expanded(child: _posCell(context, provider, matchId,
+                          posIdx: 1, teamPlayers: teamPlayers, records: records)),
                       const SizedBox(width: 6),
-                      Expanded(
-                        child: at(2) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(2)!, records)
-                            : const SizedBox(),
-                      ),
+                      Expanded(child: _posCell(context, provider, matchId,
+                          posIdx: 2, teamPlayers: teamPlayers, records: records)),
                       const SizedBox(width: 6),
-                      Expanded(
-                        child: at(3) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(3)!, records)
-                            : const SizedBox(),
-                      ),
+                      Expanded(child: _posCell(context, provider, matchId,
+                          posIdx: 3, teamPlayers: teamPlayers, records: records)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 6),
-                // 後衛行：左・右 2人（中央は空白）
+                // 後衛行：左右2人（中央空白）
                 Expanded(
                   flex: 3,
                   child: Row(
                     children: [
-                      Expanded(
-                        child: at(4) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(4)!, records)
-                            : const SizedBox(),
-                      ),
+                      Expanded(child: _posCell(context, provider, matchId,
+                          posIdx: 4, teamPlayers: teamPlayers, records: records)),
                       const SizedBox(width: 6),
-                      const Expanded(child: SizedBox()), // 中央空白
+                      const Expanded(child: SizedBox()),
                       const SizedBox(width: 6),
-                      Expanded(
-                        child: at(5) != null
-                            ? _playerCell(
-                                context, provider, matchId, at(5)!, records)
-                            : const SizedBox(),
-                      ),
+                      Expanded(child: _posCell(context, provider, matchId,
+                          posIdx: 5, teamPlayers: teamPlayers, records: records)),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 4),
-                // 下部：凡例 + 合計
                 _buildLegendBar(records),
               ],
             ),
           ),
         ),
 
-        // 修正パネル（展開式）
-        _buildEditSection(provider, matchId, players, records),
+        // 修正パネル
+        _buildEditSection(context, provider, matchId, teamPlayers, records),
       ],
     );
   }
@@ -362,84 +330,83 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         gradient: LinearGradient(
           colors: [Color(0xFF001133), Color(0xFF002266), Color(0xFF001133)],
         ),
-        border: Border(
-          bottom: BorderSide(color: Color(0xFF4488FF), width: 2),
-        ),
+        border: Border(bottom: BorderSide(color: Color(0xFF4488FF), width: 2)),
       ),
       child: const Center(
-        child: Text(
-          '━━━━━  N E T  ━━━━━',
-          style: TextStyle(
-            color: Color(0xFF6699FF),
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 3,
-          ),
-        ),
+        child: Text('━━━━━  N E T  ━━━━━',
+            style: TextStyle(color: Color(0xFF6699FF), fontSize: 11,
+                fontWeight: FontWeight.bold, letterSpacing: 3)),
       ),
     );
   }
 
-  // ─── 選手セル（フリック入力エリア）────────────────────────────────
-  Widget _playerCell(
+  // ─── 1ポジション分のセル ──────────────────────────────────────────
+  Widget _posCell(
     BuildContext context,
     AppProvider provider,
-    String matchId,
-    Player player,
-    List<ReceiveRecord> allRecords,
-  ) {
-    final pid = player.id;
-    final playerRecords = allRecords.where((r) => r.playerId == pid).toList();
+    String matchId, {
+    required int posIdx,
+    required List<Player> teamPlayers,
+    required List<ReceiveRecord> records,
+  }) {
+    final player = _posPlayers[posIdx];
+
+    // 選手未割り当て → 「選手を選択」ボタン
+    if (player == null) {
+      return _emptyCell(context, posIdx, teamPlayers);
+    }
+
+    final playerRecords = records.where((r) => r.playerId == player.id).toList();
     final counts = <ReceiveResult, int>{
       for (final r in ReceiveResult.values)
         r: playerRecords.where((rec) => rec.result == r).length,
     };
     final total = playerRecords.length;
-    final preview = _previews[pid];
-    final flashResult = _flashResults[pid];
-    final ctrl = _ctrl(pid);
+    final preview = _previews[posIdx];
+    final flashResult = _flashResults[posIdx];
+    final ctrl = _ctrl(posIdx);
 
     return GestureDetector(
       onPanStart: (d) {
         setState(() {
-          _flickStarts[pid] = d.localPosition;
-          _previews[pid] = null;
-          _editPlayerId = null; // 入力開始したら修正パネルを閉じる
+          _flickStarts[posIdx] = d.localPosition;
+          _previews[posIdx] = null;
+          _editPosIdx = null;
         });
       },
       onPanUpdate: (d) {
-        final start = _flickStarts[pid];
+        final start = _flickStarts[posIdx];
         if (start == null) return;
         final detected = _detect(d.localPosition - start);
-        if (detected != _previews[pid]) {
-          setState(() => _previews[pid] = detected);
+        if (detected != _previews[posIdx]) {
+          setState(() => _previews[posIdx] = detected);
         }
       },
       onPanEnd: (d) async {
-        final result = _previews[pid];
+        final result = _previews[posIdx];
         setState(() {
-          _flickStarts.remove(pid);
-          _previews[pid] = null;
+          _flickStarts.remove(posIdx);
+          _previews[posIdx] = null;
         });
         if (result != null) {
-          _triggerFlash(pid, result);
+          _triggerFlash(posIdx, result);
           await provider.addReceiveRecord(
             matchId: matchId,
-            playerId: pid,
+            playerId: player.id,
             result: result,
           );
         }
       },
       onPanCancel: () {
         setState(() {
-          _flickStarts.remove(pid);
-          _previews[pid] = null;
+          _flickStarts.remove(posIdx);
+          _previews[posIdx] = null;
         });
       },
       // 長押しで修正パネルを開く
       onLongPress: () {
         setState(() {
-          _editPlayerId = _editPlayerId == pid ? null : pid;
+          _editPosIdx = _editPosIdx == posIdx ? null : posIdx;
         });
       },
       child: AnimatedBuilder(
@@ -450,9 +417,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               : 0.0;
           return Stack(
             children: [
-              // 本体
               child!,
-              // フラッシュオーバーレイ
               if (flashOpacity > 0.01 && flashResult != null)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -470,15 +435,12 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                             children: [
                               Icon(_icon(flashResult),
                                   color: _color(flashResult), size: 28),
-                              Text(
-                                _label(flashResult),
-                                style: TextStyle(
-                                  color: _color(flashResult),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
+                              Text(_label(flashResult),
+                                  style: TextStyle(
+                                      color: _color(flashResult),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center),
                             ],
                           ),
                         ),
@@ -489,26 +451,62 @@ class _ReceiveScreenState extends State<ReceiveScreen>
             ],
           );
         },
-        child: _playerCellBody(player, counts, total, preview),
+        child: _cellBody(posIdx, player, counts, total, preview),
       ),
     );
   }
 
-  Widget _playerCellBody(
+  // 未割り当てセル（選手選択ボタン）
+  Widget _emptyCell(BuildContext context, int posIdx, List<Player> teamPlayers) {
+    return GestureDetector(
+      onTap: () => _showPlayerPicker(context, posIdx, teamPlayers),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A120A),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: const Color(0xFF2A4A2A),
+            style: BorderStyle.solid,
+            width: 1.5,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_add,
+                color: AppTheme.grey.withValues(alpha: 0.5), size: 20),
+            const SizedBox(height: 4),
+            Text(_posLabels[posIdx],
+                style: TextStyle(
+                    color: AppTheme.grey.withValues(alpha: 0.5), fontSize: 9)),
+            const SizedBox(height: 2),
+            Text('タップして選択',
+                style: TextStyle(
+                    color: AppTheme.grey.withValues(alpha: 0.4), fontSize: 8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // セル本体（選手割り当て済み）
+  Widget _cellBody(
+    int posIdx,
     Player player,
     Map<ReceiveResult, int> counts,
     int total,
     ReceiveResult? preview,
   ) {
+    final isEditOpen = _editPosIdx == posIdx;
     final borderColor = preview != null
         ? _color(preview)
-        : _editPlayerId == player.id
+        : isEditOpen
             ? Colors.lightBlueAccent
             : const Color(0xFF2A4A2A);
 
     final bgColor = preview != null
         ? _color(preview).withValues(alpha: 0.18)
-        : _editPlayerId == player.id
+        : isEditOpen
             ? Colors.blue.withValues(alpha: 0.12)
             : const Color(0xFF152015);
 
@@ -524,40 +522,39 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         boxShadow: preview != null
             ? [BoxShadow(
                 color: _color(preview).withValues(alpha: 0.4),
-                blurRadius: 12,
-              )]
+                blurRadius: 12)]
             : null,
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Stack(
         children: [
-          // ── 上部：フリックヒント（上=オーバー）
-          _flickHintTop(counts[ReceiveResult.over] ?? 0,
-              preview == ReceiveResult.over),
-
-          // ── 中央：左右ヒント + 選手名
-          Row(
+          Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 左（アンダー）
-              _flickHintSide(
-                  counts[ReceiveResult.under] ?? 0,
-                  preview == ReceiveResult.under,
-                  ReceiveResult.under,
-                  isLeft: true),
-              // 中央：選手名
-              Expanded(child: _playerNameArea(player, total, preview)),
-              // 右（二段・ダイレクト）
-              _flickHintSide(
-                  counts[ReceiveResult.direct] ?? 0,
-                  preview == ReceiveResult.direct,
-                  ReceiveResult.direct,
-                  isLeft: false),
+              _flickHintTop(counts[ReceiveResult.over] ?? 0,
+                  preview == ReceiveResult.over),
+              Row(
+                children: [
+                  _flickHintSide(counts[ReceiveResult.under] ?? 0,
+                      preview == ReceiveResult.under,
+                      ReceiveResult.under, isLeft: true),
+                  Expanded(child: _playerNameArea(player, total, preview)),
+                  _flickHintSide(counts[ReceiveResult.direct] ?? 0,
+                      preview == ReceiveResult.direct,
+                      ReceiveResult.direct, isLeft: false),
+                ],
+              ),
+              _flickHintBottom(counts[ReceiveResult.miss] ?? 0,
+                  preview == ReceiveResult.miss),
             ],
           ),
-
-          // ── 下部：フリックヒント（下=ミス）
-          _flickHintBottom(counts[ReceiveResult.miss] ?? 0,
-              preview == ReceiveResult.miss),
+          // 長押しヒントアイコン（右上）
+          if (preview == null)
+            Positioned(
+              top: 3,
+              right: 3,
+              child: Icon(Icons.more_vert,
+                  color: AppTheme.grey.withValues(alpha: 0.35), size: 12),
+            ),
         ],
       ),
     );
@@ -571,27 +568,20 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: active
-            ? _color(r).withValues(alpha: 0.3)
-            : Colors.transparent,
+        color: active ? _color(r).withValues(alpha: 0.3) : Colors.transparent,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.arrow_upward,
-              color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
-              size: active ? 14 : 11),
-          Text(
-            count > 0 ? '$count' : 'オーバー',
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.arrow_upward,
+            color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
+            size: active ? 14 : 11),
+        Text(count > 0 ? '$count' : 'オーバー',
             style: TextStyle(
               color: active ? _color(r) : _color(r).withValues(alpha: 0.5),
               fontSize: count > 0 ? 11 : 9,
               fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ],
-      ),
+            )),
+      ]),
     );
   }
 
@@ -603,35 +593,26 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: active
-            ? _color(r).withValues(alpha: 0.3)
-            : Colors.transparent,
-        borderRadius:
-            const BorderRadius.vertical(bottom: Radius.circular(10)),
+        color: active ? _color(r).withValues(alpha: 0.3) : Colors.transparent,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            count > 0 ? '$count' : 'ミス',
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(count > 0 ? '$count' : 'ミス',
             style: TextStyle(
               color: active ? _color(r) : _color(r).withValues(alpha: 0.5),
               fontSize: count > 0 ? 11 : 9,
               fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          Icon(Icons.arrow_downward,
-              color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
-              size: active ? 14 : 11),
-        ],
-      ),
+            )),
+        Icon(Icons.arrow_downward,
+            color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
+            size: active ? 14 : 11),
+      ]),
     );
   }
 
   // 左右フリックヒント
   Widget _flickHintSide(int count, bool active, ReceiveResult r,
       {required bool isLeft}) {
-    final label = isLeft ? 'ア\nン\nダ\nー' : '二\n段\n・\nDirect';
     return AnimatedContainer(
       duration: const Duration(milliseconds: 100),
       width: 22,
@@ -646,32 +627,20 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (isLeft)
-            Icon(Icons.arrow_back,
-                color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
-                size: active ? 12 : 10)
-          else
-            Icon(Icons.arrow_forward,
-                color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
-                size: active ? 12 : 10),
+          Icon(isLeft ? Icons.arrow_back : Icons.arrow_forward,
+              color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
+              size: active ? 12 : 10),
           if (count > 0)
-            Text(
-              '$count',
-              style: TextStyle(
-                color: active ? _color(r) : _color(r).withValues(alpha: 0.7),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            )
+            Text('$count',
+                style: TextStyle(
+                    color: active ? _color(r) : _color(r).withValues(alpha: 0.7),
+                    fontSize: 10, fontWeight: FontWeight.bold))
           else
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
-                fontSize: 7,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Text(isLeft ? 'ア\nン\nダ' : '二\n段',
+                style: TextStyle(
+                    color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
+                    fontSize: 7),
+                textAlign: TextAlign.center),
         ],
       ),
     );
@@ -683,41 +652,22 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (player.number.isNotEmpty)
-          Text(
-            '#${player.number}',
-            style: const TextStyle(
-              color: AppTheme.gold,
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        Text(
-          player.name,
-          style: TextStyle(
-            color: preview != null ? Colors.white : const Color(0xFFDDFFDD),
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-        ),
-        if (total > 0)
-          Text(
-            '$total本',
+          Text('#${player.number}',
+              style: const TextStyle(
+                  color: AppTheme.gold, fontSize: 9, fontWeight: FontWeight.bold)),
+        Text(player.name,
             style: TextStyle(
-              color: preview != null
-                  ? _color(preview).withValues(alpha: 0.9)
-                  : Colors.lightBlueAccent.withValues(alpha: 0.8),
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        // 長押しヒント（記録がある場合）
-        if (total > 0 && preview == null)
-          const Text(
-            '長押し=修正',
-            style: TextStyle(color: Color(0xFF446644), fontSize: 7),
-          ),
+                color: preview != null ? Colors.white : const Color(0xFFDDFFDD),
+                fontSize: 14, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis),
+        if (total > 0)
+          Text('$total本',
+              style: TextStyle(
+                  color: preview != null
+                      ? _color(preview).withValues(alpha: 0.9)
+                      : Colors.lightBlueAccent.withValues(alpha: 0.8),
+                  fontSize: 11, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -739,34 +689,25 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         children: [
           Text('合計 $total本',
               style: const TextStyle(
-                  color: AppTheme.gold,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold)),
+                  color: AppTheme.gold, fontSize: 11, fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
           ...ReceiveResult.values.map((r) {
             final c = counts[r] ?? 0;
             final pct = total > 0
-                ? '${(c / total * 100).toStringAsFixed(0)}%'
-                : '-';
+                ? '${(c / total * 100).toStringAsFixed(0)}%' : '-';
             return Expanded(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(_icon(r), color: _color(r), size: 10),
                   const SizedBox(width: 2),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$c',
-                          style: TextStyle(
-                              color: _color(r),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold)),
-                      Text(pct,
-                          style: const TextStyle(
-                              color: AppTheme.grey, fontSize: 9)),
-                    ],
-                  ),
+                  Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text('$c',
+                        style: TextStyle(color: _color(r), fontSize: 12,
+                            fontWeight: FontWeight.bold)),
+                    Text(pct,
+                        style: const TextStyle(color: AppTheme.grey, fontSize: 9)),
+                  ]),
                 ],
               ),
             );
@@ -776,15 +717,152 @@ class _ReceiveScreenState extends State<ReceiveScreen>
     );
   }
 
-  // ─── 修正パネル（長押しで展開）──────────────────────────────────
-  Widget _buildEditSection(AppProvider provider, String matchId,
-      List<Player> players, List<ReceiveRecord> allRecords) {
-    if (_editPlayerId == null) return const SizedBox.shrink();
+  // ─── 選手選択ピッカー（ダイアログ）────────────────────────────────
+  void _showPlayerPicker(
+      BuildContext context, int posIdx, List<Player> teamPlayers) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.cardBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ハンドル
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.grey.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sports_volleyball,
+                        color: AppTheme.gold, size: 18),
+                    const SizedBox(width: 8),
+                    Text('${_posLabels[posIdx]} の選手を選択',
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 15,
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+              const Divider(color: Color(0xFF333333), height: 1),
+              // 空き（未割り当て）
+              ListTile(
+                leading: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.cardBg2,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.grey),
+                  ),
+                  child: const Icon(Icons.person_off,
+                      color: AppTheme.grey, size: 18),
+                ),
+                title: const Text('空き（未割り当て）',
+                    style: TextStyle(color: AppTheme.grey, fontSize: 14)),
+                onTap: () {
+                  setState(() => _posPlayers[posIdx] = null);
+                  Navigator.pop(ctx);
+                },
+              ),
+              const Divider(color: Color(0xFF222222), height: 1),
+              // Aチームの選手一覧
+              ...teamPlayers.map((player) {
+                final isCurrentlyAssigned =
+                    _posPlayers[posIdx]?.id == player.id;
+                // 他のポジションで使用中かチェック
+                final usedAtPos = _posPlayers.indexWhere(
+                    (p) => p?.id == player.id);
+                final isUsedElsewhere =
+                    usedAtPos != -1 && usedAtPos != posIdx;
 
-    final player = players.firstWhere(
-      (p) => p.id == _editPlayerId,
-      orElse: () => players.first,
+                return ListTile(
+                  leading: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: isCurrentlyAssigned
+                          ? AppTheme.gold.withValues(alpha: 0.2)
+                          : isUsedElsewhere
+                              ? AppTheme.primaryRed.withValues(alpha: 0.1)
+                              : AppTheme.primaryRed.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isCurrentlyAssigned
+                            ? AppTheme.gold
+                            : isUsedElsewhere
+                                ? AppTheme.grey
+                                : AppTheme.primaryRed,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        player.number.isNotEmpty ? '#${player.number}' : '?',
+                        style: TextStyle(
+                          color: isCurrentlyAssigned
+                              ? AppTheme.gold
+                              : isUsedElsewhere
+                                  ? AppTheme.grey
+                                  : AppTheme.primaryRed,
+                          fontSize: 11, fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: Text(player.name,
+                      style: TextStyle(
+                        color: isUsedElsewhere
+                            ? AppTheme.grey : Colors.white,
+                        fontSize: 15, fontWeight: FontWeight.bold,
+                      )),
+                  subtitle: isUsedElsewhere
+                      ? Text(
+                          '${_posLabels[usedAtPos]} に配置中',
+                          style: const TextStyle(
+                              color: AppTheme.grey, fontSize: 11))
+                      : null,
+                  trailing: isCurrentlyAssigned
+                      ? const Icon(Icons.check_circle,
+                          color: AppTheme.gold, size: 20)
+                      : null,
+                  onTap: () {
+                    setState(() {
+                      // 他のポジションに同じ選手がいたら入れ替え
+                      if (isUsedElsewhere) {
+                        final currentPlayer = _posPlayers[posIdx];
+                        _posPlayers[usedAtPos] = currentPlayer;
+                      }
+                      _posPlayers[posIdx] = player;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  // ─── 修正パネル（長押しで展開）──────────────────────────────────
+  Widget _buildEditSection(BuildContext context, AppProvider provider,
+      String matchId, List<Player> teamPlayers, List<ReceiveRecord> allRecords) {
+    if (_editPosIdx == null) return const SizedBox.shrink();
+
+    final posIdx = _editPosIdx!;
+    final player = _posPlayers[posIdx];
+    if (player == null) return const SizedBox.shrink();
+
     final playerRecords =
         allRecords.where((r) => r.playerId == player.id).toList();
     final counts = <ReceiveResult, int>{
@@ -804,35 +882,36 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ヘッダー
           Row(
             children: [
-              Text(
-                '${player.name} の記録を修正',
-                style: const TextStyle(
-                    color: Colors.lightBlueAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold),
-              ),
+              Text('${player.name} （${_posLabels[posIdx]}）',
+                  style: const TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontSize: 12, fontWeight: FontWeight.bold)),
               const Spacer(),
-              // 名前・背番号変更ボタン
+              // 選手変更ボタン
               GestureDetector(
-                onTap: () => _showRenameDialog(context, player, provider),
+                onTap: () {
+                  setState(() => _editPosIdx = null);
+                  _showPlayerPicker(context, posIdx, teamPlayers);
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.gold.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.gold.withValues(alpha: 0.5)),
+                    border: Border.all(
+                        color: AppTheme.gold.withValues(alpha: 0.5)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.edit, color: AppTheme.gold, size: 12),
+                      Icon(Icons.swap_horiz, color: AppTheme.gold, size: 13),
                       SizedBox(width: 4),
-                      Text('名前変更',
+                      Text('選手変更',
                           style: TextStyle(
-                              color: AppTheme.gold,
-                              fontSize: 11,
+                              color: AppTheme.gold, fontSize: 11,
                               fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -840,9 +919,8 @@ class _ReceiveScreenState extends State<ReceiveScreen>
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => setState(() => _editPlayerId = null),
-                child: const Icon(Icons.close,
-                    color: AppTheme.grey, size: 16),
+                onTap: () => setState(() => _editPosIdx = null),
+                child: const Icon(Icons.close, color: AppTheme.grey, size: 16),
               ),
             ],
           ),
@@ -850,6 +928,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
           const Text('▼ 1本取り消す（最新の記録を削除）',
               style: TextStyle(color: AppTheme.grey, fontSize: 10)),
           const SizedBox(height: 6),
+          // 結果別取り消しボタン
           Row(
             children: ReceiveResult.values.map((r) {
               final count = counts[r] ?? 0;
@@ -863,15 +942,8 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                             ..sort((a, b) =>
                                 b.timestamp.compareTo(a.timestamp));
                           if (toDelete.isNotEmpty) {
-                            await provider
-                                .deleteReceiveRecord(toDelete.first.id);
-                          }
-                          if ((count - 1) <= 0 &&
-                              counts.values
-                                      .fold(0, (a, b) => a + b) -
-                                  1 <=
-                              0) {
-                            setState(() => _editPlayerId = null);
+                            await provider.deleteReceiveRecord(
+                                toDelete.first.id);
                           }
                         }
                       : null,
@@ -891,30 +963,20 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                         width: count > 0 ? 1.5 : 1,
                       ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          count > 0 ? '-1' : '－',
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(count > 0 ? '-1' : '－',
                           style: TextStyle(
                               color: count > 0 ? _color(r) : AppTheme.grey,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          _shortLabel(r),
+                              fontSize: 14, fontWeight: FontWeight.bold)),
+                      Text(_shortLabel(r),
                           style: TextStyle(
                               color: count > 0 ? _color(r) : AppTheme.grey,
                               fontSize: 8),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (count > 0)
-                          Text(
-                            '($count)',
-                            style: TextStyle(color: _color(r), fontSize: 9),
-                          ),
-                      ],
-                    ),
+                          textAlign: TextAlign.center),
+                      if (count > 0)
+                        Text('($count)',
+                            style: TextStyle(color: _color(r), fontSize: 9)),
+                    ]),
                   ),
                 ),
               );
@@ -952,19 +1014,17 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                   for (final rec in playerRecords) {
                     await provider.deleteReceiveRecord(rec.id);
                   }
-                  setState(() => _editPlayerId = null);
+                  setState(() => _editPosIdx = null);
                 }
               },
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color:
-                      AppTheme.receiveMissColor.withValues(alpha: 0.12),
+                  color: AppTheme.receiveMissColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: AppTheme.receiveMissColor
-                          .withValues(alpha: 0.4)),
+                      color: AppTheme.receiveMissColor.withValues(alpha: 0.4)),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -975,84 +1035,12 @@ class _ReceiveScreenState extends State<ReceiveScreen>
                     Text('全記録を削除',
                         style: TextStyle(
                             color: AppTheme.receiveMissColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold)),
+                            fontSize: 12, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-  // ─── 名前・背番号変更ダイアログ ────────────────────────────────────
-  Future<void> _showRenameDialog(
-      BuildContext context, Player player, AppProvider provider) async {
-    final nameCtrl = TextEditingController(text: player.name);
-    final numberCtrl = TextEditingController(text: player.number);
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.cardBg,
-        title: Row(
-          children: [
-            Container(
-                width: 4,
-                height: 24,
-                color: AppTheme.gold,
-                margin: const EdgeInsets.only(right: 8)),
-            const Text('選手情報を変更',
-                style: TextStyle(color: Colors.white, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-              decoration: const InputDecoration(
-                labelText: '選手名',
-                prefixIcon:
-                    Icon(Icons.person, color: AppTheme.gold, size: 18),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: numberCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-              decoration: const InputDecoration(
-                labelText: '背番号（任意）',
-                prefixIcon:
-                    Icon(Icons.tag, color: AppTheme.grey, size: 18),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('キャンセル',
-                style: TextStyle(color: AppTheme.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.gold),
-            onPressed: () async {
-              final newName = nameCtrl.text.trim();
-              if (newName.isEmpty) return;
-              player.name = newName;
-              player.number = numberCtrl.text.trim();
-              await provider.updatePlayer(player);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('保存',
-                style: TextStyle(
-                    color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
         ],
       ),
     );
