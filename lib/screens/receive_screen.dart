@@ -260,18 +260,18 @@ class _ReceiveScreenState extends State<ReceiveScreen>
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
             child: Column(
               children: [
-                // 前衛行：中央1人
+                // 前衛行：中央1人（小さめ表示）
                 Expanded(
-                  flex: 3,
+                  flex: 2,
                   child: Row(
                     children: [
-                      const Expanded(flex: 1, child: SizedBox()),
+                      const Expanded(flex: 3, child: SizedBox()),
                       Expanded(
-                        flex: 2,
+                        flex: 4,
                         child: _posCell(context, provider, matchId,
                             posIdx: 0, teamPlayers: teamPlayers, records: records),
                       ),
-                      const Expanded(flex: 1, child: SizedBox()),
+                      const Expanded(flex: 3, child: SizedBox()),
                     ],
                   ),
                 ),
@@ -578,8 +578,8 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         Text(count > 0 ? '$count' : 'オーバー',
             style: TextStyle(
               color: active ? _color(r) : _color(r).withValues(alpha: 0.5),
-              fontSize: count > 0 ? 11 : 9,
-              fontWeight: active ? FontWeight.bold : FontWeight.normal,
+              fontSize: count > 0 ? 15 : 9,
+              fontWeight: FontWeight.bold,
             )),
       ]),
     );
@@ -600,8 +600,8 @@ class _ReceiveScreenState extends State<ReceiveScreen>
         Text(count > 0 ? '$count' : 'ミス',
             style: TextStyle(
               color: active ? _color(r) : _color(r).withValues(alpha: 0.5),
-              fontSize: count > 0 ? 11 : 9,
-              fontWeight: active ? FontWeight.bold : FontWeight.normal,
+              fontSize: count > 0 ? 15 : 9,
+              fontWeight: FontWeight.bold,
             )),
         Icon(Icons.arrow_downward,
             color: active ? _color(r) : _color(r).withValues(alpha: 0.4),
@@ -615,7 +615,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
       {required bool isLeft}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 100),
-      width: 22,
+      width: 26,
       padding: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: active ? _color(r).withValues(alpha: 0.3) : Colors.transparent,
@@ -634,7 +634,7 @@ class _ReceiveScreenState extends State<ReceiveScreen>
             Text('$count',
                 style: TextStyle(
                     color: active ? _color(r) : _color(r).withValues(alpha: 0.7),
-                    fontSize: 10, fontWeight: FontWeight.bold))
+                    fontSize: 14, fontWeight: FontWeight.bold))
           else
             Text(isLeft ? 'ア\nン\nダ' : '二\n段',
                 style: TextStyle(
